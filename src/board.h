@@ -14,7 +14,13 @@ private:
     int halfmoveClock;
     int fullmoveNumber;
 
+    bool isPathClear(int r1, int c1, int r2, int c2) const;
+    bool isSquareAttacked(int row, int col, char byColor) const;
+
 public:
     void startBoard();
     void printBoard() const;
+    bool isMoveValid(const std::string& move);
+    void makeMove(const std::string& move);
 };
+

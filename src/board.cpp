@@ -6,14 +6,7 @@
 #include <sstream>
 #include <cctype>
 #include "board.h"
-#include "board.h"
-#include <iostream>
-
-#include <iostream>
-#include <string>
-#include <sstream>
-#include <cctype>
-#include "board.h"
+#include "move.h"
 
 void Board::startBoard() {
     std::string fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -135,16 +128,12 @@ bool Board::isSquareAttacked(int row, int col, char byColor) const {
     return false;
 }
 
-bool Board::isMoveValid(const std::string& move) {
-    std::istringstream ss(move);
-    std::string fromStr, toWord, toStr;
-    ss >> fromStr >> toWord >> toStr;
-    if (fromStr.size() != 2 || toStr.size() != 2) return false;
+bool Board::isMoveValid(const Move& move) {
 
-    int r1 = rankToRow(fromStr[1]);
-    int c1 = fileToCol(fromStr[0]);
-    int r2 = rankToRow(toStr[1]);
-    int c2 = fileToCol(toStr[0]);
+    int r1 = move.fromRow;
+    int c1 = move.fromCol;
+    int r2 = move.toRow;
+    int c2 = move.toCol;
 
     char piece = board[r1][c1];
     if (!piece) return false;
@@ -209,19 +198,12 @@ bool Board::isMoveValid(const std::string& move) {
     return !inCheck;
 }
 
-void Board::makeMove(const std::string& move) {
+void Board::makeMove(const Move& move) {
     if (!isMoveValid(move)) {
         std::cout << "Illegal move!\n";
         return;
     }
-    std::istringstream ss(move);
-    std::string fromStr, toWord, toStr;
-    ss >> fromStr >> toWord >> toStr;
-    int r1 = rankToRow(fromStr[1]);
-    int c1 = fileToCol(fromStr[0]);
-    int r2 = rankToRow(toStr[1]);
-    int c2 = fileToCol(toStr[0]);
-    board[r2][c2] = board[r1][c1];
-    board[r1][c1] = 0;
+    board[move.toRow][move.toCol] = board[move.fromRow][move.fromCol];
+    board[move.fromRow][move.fromCol] = 0;
     activeColor = (activeColor == 'w') ? 'b' : 'w';
 }

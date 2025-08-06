@@ -4,7 +4,7 @@
 
 #pragma once
 #include <string>
-
+#include "move.h"
 class Board {
 private:
     char board[8][8] = {};
@@ -20,7 +20,7 @@ private:
 public:
     void startBoard();
     void printBoard() const;
-    bool isMoveValid(const std::string& move);
-    void makeMove(const std::string& move);
+    bool isMoveValid(const Move& move);
+    void makeMove(const Move& move);
 };
 

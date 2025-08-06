@@ -6,7 +6,8 @@
 *To do*
 
 ---
-
+### Algorithm 
+***Negamax*** with ***Alfa-Beta Pruning*** + ***Iterative Deepening*** + ***Transposition Tables***
 ### Notation
 The project uses FEN - Forsyth–Edwards Notation
 

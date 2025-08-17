@@ -1,9 +1,10 @@
 //
-// Created by jakub on 06.08.2025.
+// Created by jakub on 06.08.2025.s
 //
 #include "move.h"
 
-bool Move::operator==(const Move& other) const {
+bool Move::operator==(const Move &other) const
+{
     return fromRow == other.fromRow &&
            fromCol == other.fromCol &&
            toRow == other.toRow &&

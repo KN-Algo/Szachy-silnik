@@ -9,6 +9,23 @@
 #include "move.h"
 #include <algorithm> //Dodane przez MS
 
+// --- helpery algebryczne dla en passant ---
+static std::string coordToAlg(int row, int col) {
+    char file = 'a' + col;
+    char rank = '8' - row;
+    return std::string{file} + rank;
+}
+
+static bool algToCoord(const std::string& s, int& row, int& col) {
+    if (s.size() != 2) return false;
+    char f = std::tolower(s[0]), r = s[1];
+    if (f < 'a' || f > 'h' || r < '1' || r > '8') return false;
+    col = f - 'a';
+    row = '8' - r;
+    return true;
+}
+
+
 void Board::startBoard()
 {
     std::string fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";

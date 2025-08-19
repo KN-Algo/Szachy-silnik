@@ -5,6 +5,7 @@
 #include <string>
 #include <sstream>
 #include <cctype>
+#include <algorithm>
 #include "board.h"
 #include "move.h"
 
@@ -42,6 +43,9 @@ void Board::startBoard() {
     i = spacePos + 1;
 
     fullmoveNumber = std::stoi(fen.substr(i));
+    
+    positionHistory.clear();
+    positionHistory[boardToString()] = 1;
 }
 
 void Board::printBoard() const {
@@ -57,6 +61,11 @@ void Board::printBoard() const {
     std::cout << "En passant: " << enPassant << '\n';
     std::cout << "Halfmove clock: " << halfmoveClock << '\n';
     std::cout << "Fullmove number: " << fullmoveNumber << '\n';
+    
+    GameState state = getGameState();
+    if (state != GameState::PLAYING) {
+        std::cout << "Game Status: " << getGameStateString() << '\n';
+    }
 }
 
 static int fileToCol(char file) { return file - 'a'; }
@@ -129,7 +138,6 @@ bool Board::isSquareAttacked(int row, int col, char byColor) const {
 }
 
 bool Board::isMoveValid(const Move& move) {
-
     int r1 = move.fromRow;
     int c1 = move.fromCol;
     int r2 = move.toRow;
@@ -203,7 +211,216 @@ void Board::makeMove(const Move& move) {
         std::cout << "Illegal move!\n";
         return;
     }
-    board[move.toRow][move.toCol] = board[move.fromRow][move.fromCol];
+    
+    char piece = board[move.fromRow][move.fromCol];
+    char captured = board[move.toRow][move.toCol];
+    
+    if (std::toupper(piece) == 'P' || captured != 0) {
+        halfmoveClock = 0;
+    } else {
+        halfmoveClock++;
+    }
+    
+    board[move.toRow][move.toCol] = piece;
     board[move.fromRow][move.fromCol] = 0;
+    
+    if (activeColor == 'b') {
+        fullmoveNumber++;
+    }
+    
     activeColor = (activeColor == 'w') ? 'b' : 'w';
+    
+    std::string position = boardToString();
+    positionHistory[position]++;
+}
+
+std::vector<Move> Board::getLegalMoves() const {
+    std::vector<Move> legalMoves;
+    
+    for (int fromRow = 0; fromRow < 8; fromRow++) {
+        for (int fromCol = 0; fromCol < 8; fromCol++) {
+            char piece = board[fromRow][fromCol];
+            if (!piece) continue;
+            
+            bool whitePiece = std::isupper(piece);
+            if ((activeColor == 'w' && !whitePiece) || (activeColor == 'b' && whitePiece))
+                continue;
+            
+            for (int toRow = 0; toRow < 8; toRow++) {
+                for (int toCol = 0; toCol < 8; toCol++) {
+                    Move move = {fromRow, fromCol, toRow, toCol, piece, board[toRow][toCol]};
+                    
+                    Board* nonConstThis = const_cast<Board*>(this);
+                    if (nonConstThis->isMoveValid(move)) {
+                        legalMoves.push_back(move);
+                    }
+                }
+            }
+        }
+    }
+    
+    return legalMoves;
+}
+
+bool Board::hasLegalMoves() const {
+    for (int fromRow = 0; fromRow < 8; fromRow++) {
+        for (int fromCol = 0; fromCol < 8; fromCol++) {
+            char piece = board[fromRow][fromCol];
+            if (!piece) continue;
+            
+            bool whitePiece = std::isupper(piece);
+            if ((activeColor == 'w' && !whitePiece) || (activeColor == 'b' && whitePiece))
+                continue;
+            
+            for (int toRow = 0; toRow < 8; toRow++) {
+                for (int toCol = 0; toCol < 8; toCol++) {
+                    Move move = {fromRow, fromCol, toRow, toCol, piece, board[toRow][toCol]};
+                    
+                    Board* nonConstThis = const_cast<Board*>(this);
+                    if (nonConstThis->isMoveValid(move)) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool Board::isInCheck() const {
+    char kingChar = (activeColor == 'w') ? 'K' : 'k';
+    int kingRow = -1, kingCol = -1;
+    
+    for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+            if (board[r][c] == kingChar) {
+                kingRow = r;
+                kingCol = c;
+                break;
+            }
+        }
+        if (kingRow != -1) break;
+    }
+    
+    if (kingRow == -1) return false;
+    
+    char enemyColor = (activeColor == 'w') ? 'b' : 'w';
+    return isSquareAttacked(kingRow, kingCol, enemyColor);
+}
+
+GameState Board::getGameState() const {
+    if (halfmoveClock >= 100) {
+        return GameState::DRAW_50_MOVES;
+    }
+    
+    std::string currentPosition = boardToString();
+    auto it = positionHistory.find(currentPosition);
+    if (it != positionHistory.end() && it->second >= 3) {
+        return GameState::DRAW_REPETITION;
+    }
+    
+    if (hasInsufficientMaterial()) {
+        return GameState::DRAW_INSUFFICIENT_MATERIAL;
+    }
+    
+    if (!hasLegalMoves()) {
+        if (isInCheck()) {
+            return GameState::CHECKMATE;
+        } else {
+            return GameState::STALEMATE;
+        }
+    }
+    
+    return GameState::PLAYING;
+}
+
+std::string Board::getGameStateString() const {
+    switch (getGameState()) {
+        case GameState::PLAYING:
+            return "Game in progress";
+        case GameState::CHECKMATE:
+            return (activeColor == 'w') ? "Czarny wygrywa przez mata!" : "Biały wygrywa przez mata!";
+        case GameState::STALEMATE:
+            return "Remis przez pata!";
+        case GameState::DRAW_50_MOVES:
+            return "Remis przez zasadę 50 ruchów!";
+        case GameState::DRAW_REPETITION:
+            return "Remis przez trzykrotne powtórzenie pozycji!";
+        case GameState::DRAW_INSUFFICIENT_MATERIAL:
+            return "Remis przez niewystarczający materiał!";
+        default:
+            return "Unknown state";
+    }
+}
+
+std::string Board::boardToString() const {
+    std::string result;
+    for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+            result += (board[r][c] ? board[r][c] : '.');
+        }
+    }
+    result += activeColor;
+    result += castling;
+    result += enPassant;
+    return result;
+}
+
+bool Board::hasInsufficientMaterial() const {
+    // Count pieces
+    int wKing = 0, bKing = 0;
+    int wQueen = 0, bQueen = 0;
+    int wRook = 0, bRook = 0;
+    int wBishop = 0, bBishop = 0;
+    int wKnight = 0, bKnight = 0;
+    int wPawn = 0, bPawn = 0;
+    
+    for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+            switch (board[r][c]) {
+                case 'K': wKing++; break;
+                case 'k': bKing++; break;
+                case 'Q': wQueen++; break;
+                case 'q': bQueen++; break;
+                case 'R': wRook++; break;
+                case 'r': bRook++; break;
+                case 'B': wBishop++; break;
+                case 'b': bBishop++; break;
+                case 'N': wKnight++; break;
+                case 'n': bKnight++; break;
+                case 'P': wPawn++; break;
+                case 'p': bPawn++; break;
+            }
+        }
+    }
+    
+    if (wPawn || bPawn || wQueen || bQueen || wRook || bRook) {
+        return false;
+    }
+    
+    if (wBishop == 0 && bBishop == 0 && wKnight == 0 && bKnight == 0) {
+        return true;
+    }
+    
+    if ((wBishop == 1 && bBishop == 0 && wKnight == 0 && bKnight == 0) ||
+        (wBishop == 0 && bBishop == 1 && wKnight == 0 && bKnight == 0)) {
+        return true;
+    }
+    
+    if ((wKnight == 1 && bKnight == 0 && wBishop == 0 && bBishop == 0) ||
+        (wKnight == 0 && bKnight == 1 && wBishop == 0 && bBishop == 0)) {
+        return true;
+    }
+    
+    return false;
+}
+
+int Board::countPieces(char piece) const {
+    int count = 0;
+    for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+            if (board[r][c] == piece) count++;
+        }
+    }
+    return count;
 }

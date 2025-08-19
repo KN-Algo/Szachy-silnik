@@ -78,7 +78,12 @@ int main()
         else
         {
             std::cout << "Ruch nielegalny: " << s << "\n";
-            std::cout << board.checkCastlingReason(*m) << "\n"; // dodane MS
+
+            char pieceFrom = board.getPieceAt(m->fromRow, m->fromCol);
+            if (std::toupper(pieceFrom) == 'K' && std::abs(m->toCol - m->fromCol) == 2)
+            {
+                std::cout << board.checkCastlingReason(*m) << "\n";
+            }
         }
         
     }

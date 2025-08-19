@@ -23,6 +23,7 @@ public:
     void printBoard() const;
     bool isMoveValid(const Move &move);
     void makeMove(const Move &move);
+    char getPieceAt(int row, int col) const { return board[row][col]; }
     std::string checkCastlingReason(const Move &move) const; // To dodane
 };
 

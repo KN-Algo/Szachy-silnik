@@ -262,6 +262,15 @@ bool Board::isMoveValid(const Move &move)
         return false;
     }
 
+    // --- wymuszenie poprawnej promocji, gdy pion wchodzi na ostatni rząd ---
+    if ((whitePiece && r2 == 0) || (!whitePiece && r2 == 7)) {
+        char p = move.promotion ? std::toupper(move.promotion) : 0;
+        if (p != 'Q' && p != 'R' && p != 'B' && p != 'N') {
+            return false; // musi być podana litera promocji: Q/R/B/N
+        }
+    }
+
+
     // --- SYMULACJA ruchu (uwzględnij usunięcie piona przy EP) ---
     char captured = 0;
     if (isEnPassantCapture) {

@@ -234,9 +234,21 @@ bool Board::isMoveValid(const Move &move)
             return false;
         break;
     case 'K':
-        if (adr > 1 || adc > 1)
+        {
+
+            if (adr <= 1 && adc <= 1) {
+                break;
+            }
+
+            if (adr == 0 && adc == 2) {
+                std::string reason = checkCastlingReason(move);
+                if (reason == "Roszada jest mozliwa.") {
+                    break;
+                }
+            }
             return false;
-        break;
+        }
+
     default:
         return false;
     }
@@ -270,10 +282,72 @@ void Board::makeMove(const Move &move)
         std::cout << "Illegal move!\n";
         return;
     }
-    board[move.toRow][move.toCol] = board[move.fromRow][move.fromCol];
+
+    char moved = board[move.fromRow][move.fromCol];
+    char captured = board[move.toRow][move.toCol];
+
+    // --- aktualizacja praw roszady (castling) ---
+
+    auto dropRight = [&](char r) {
+        if (castling == "-") return;
+        size_t p = castling.find(r);
+        if (p != std::string::npos) {
+            castling.erase(p, 1);
+            if (castling.empty()) castling = "-";
+        }
+    };
+
+    // 2.1. jeśli poruszył się KRÓL – tracimy obie strony
+    if (std::toupper(moved) == 'K') {
+        if (std::isupper(moved)) { dropRight('K'); dropRight('Q'); }
+        else                      { dropRight('k'); dropRight('q'); }
+    }
+
+    // 2.2. jeśli poruszyła się WIEŻA ze startowego rogu – tracimy odpowiednie prawo
+    if (moved == 'R') {
+        if (move.fromRow == 7 && move.fromCol == 7) dropRight('K'); // h1
+        if (move.fromRow == 7 && move.fromCol == 0) dropRight('Q'); // a1
+    }
+    if (moved == 'r') {
+        if (move.fromRow == 0 && move.fromCol == 7) dropRight('k'); // h8
+        if (move.fromRow == 0 && move.fromCol == 0) dropRight('q'); // a8
+    }
+
+    // 2.3. jeśli ZBILIŚMY wieżę przeciwnika ze startowego rogu – też tracą prawo
+    if (captured == 'R') {
+        if (move.toRow == 7 && move.toCol == 7) dropRight('K'); // białe tracą O-O
+        if (move.toRow == 7 && move.toCol == 0) dropRight('Q'); // białe tracą O-O-O
+    }
+    if (captured == 'r') {
+        if (move.toRow == 0 && move.toCol == 7) dropRight('k'); // czarne tracą O-O
+        if (move.toRow == 0 && move.toCol == 0) dropRight('q'); // czarne tracą O-O-O
+    }
+
+    // --- wykonanie ruchu figury na pole docelowe ---
+    board[move.toRow][move.toCol]   = moved;
     board[move.fromRow][move.fromCol] = 0;
+
+    // --- przesunięcie wieży przy ROSZADZIE ---
+    if (std::toupper(moved) == 'K' && std::abs(move.toCol - move.fromCol) == 2) {
+        // król stoi już na docelowym; teraz przesuń właściwą wieżę
+        int row = move.toRow;
+        if (move.toCol == 6) {
+            // O-O: wieża z h -> f
+            board[row][5] = board[row][7];
+            board[row][7] = 0;
+        } else if (move.toCol == 2) {
+            // O-O-O: wieża z a -> d
+            board[row][3] = board[row][0];
+            board[row][0] = 0;
+        }
+    }
+
+    // --- (na razie nie ruszamy enPassant/halfmove/fullmove) ---
+
+    // zmiana strony ruchu
     activeColor = (activeColor == 'w') ? 'b' : 'w';
 }
+
 
 std::string Board::checkCastlingReason(const Move &move) const // -> Dodane MS
 {

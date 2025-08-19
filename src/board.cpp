@@ -208,26 +208,90 @@ bool Board::isMoveValid(const Move &move)
     switch (std::toupper(piece))
     {
     case 'P':
-    {
-        int dir = whitePiece ? -1 : 1;
-        if (dc == 0)
-        {
-            if (dr == dir && board[r2][c2] == 0)
-            {
-            }
-            else if ((whitePiece && r1 == 6 || !whitePiece && r1 == 1) && dr == 2 * dir && board[r1 + dir][c1] == 0 && board[r2][c2] == 0)
-            {
-            }
-            else
-                return false;
+{
+    int dir = whitePiece ? -1 : 1; // białe idą w górę (r--), czarne w dół (r++)
+    bool isEnPassantCapture = false;
+    int epCapRow = -1, epCapCol = -1;
+
+    if (dc == 0) {
+        // zwykły ruch do przodu o 1
+        if (dr == dir && board[r2][c2] == 0) {
+            // OK
         }
-        else if (adr == 1 && dr == dir && board[r2][c2] != 0)
+        // ruch o 2 z rzędu startowego (6 dla białych, 1 dla czarnych)
+        else if (( (whitePiece && r1 == 6) || (!whitePiece && r1 == 1) ) &&
+                 dr == 2 * dir &&
+                 board[r1 + dir][c1] == 0 && board[r2][c2] == 0)
         {
+            // OK (EP target ustawimy w makeMove)
         }
-        else
+        else {
             return false;
-        break;
+        }
     }
+    else if (adr == 1 && dr == dir) {
+        // bicie po skosie o 1: zwykłe lub en passant
+        if (board[r2][c2] != 0) {
+            // zwykłe bicie – OK
+        } else {
+            // --- EP: bicie w przelocie, gdy cel jest pusty, ale = enPassant ---
+            if (enPassant != "-") {
+                int epRow, epCol;
+                if (algToCoord(enPassant, epRow, epCol) && epRow == r2 && epCol == c2) {
+                    // sprawdzamy, czy faktycznie stoi pion przeciwnika "za" polem celu
+                    int capRow = r2 - dir; // pion do zbicia stoi na rzędzie, z którego przechodziliśmy
+                    int capCol = c2;
+                    char capPiece = board[capRow][capCol];
+                    if (capPiece != 0 && std::toupper(capPiece) == 'P' &&
+                        (std::isupper(capPiece) != whitePiece))
+                    {
+                        isEnPassantCapture = true;
+                        epCapRow = capRow; epCapCol = capCol;
+                    } else {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+    else {
+        return false;
+    }
+
+    // --- SYMULACJA ruchu (uwzględnij usunięcie piona przy EP) ---
+    char captured = 0;
+    if (isEnPassantCapture) {
+        captured = board[epCapRow][epCapCol];
+        board[epCapRow][epCapCol] = 0; // tymczasowo zdejmij pion do weryfikacji szacha
+    } else {
+        captured = board[r2][c2];
+    }
+
+    board[r2][c2] = piece;
+    board[r1][c1] = 0;
+
+    char kingChar = whitePiece ? 'K' : 'k';
+    int kr = 0, kc = 0;
+    for (int r = 0; r < 8; r++)
+        for (int c = 0; c < 8; c++)
+            if (board[r][c] == kingChar) { kr = r; kc = c; }
+
+    bool inCheck = isSquareAttacked(kr, kc, whitePiece ? 'b' : 'w');
+
+    // cofnięcie symulacji
+    board[r1][c1] = piece;
+    board[r2][c2] = isEnPassantCapture ? 0 : captured;
+    if (isEnPassantCapture) {
+        board[epCapRow][epCapCol] = captured;
+    }
+
+    return !inCheck;
+}
+
     case 'N':
         if (!((adr == 2 && adc == 1) || (adr == 1 && adc == 2)))
             return false;
@@ -302,9 +366,12 @@ void Board::makeMove(const Move &move)
 
     char moved = board[move.fromRow][move.fromCol];
     char captured = board[move.toRow][move.toCol];
+    bool whiteMoved = std::isupper(moved);
 
-    // --- aktualizacja praw roszady (castling) ---
+    // Domyślnie brak nowego EP; ustawimy tylko po podwójnym ruchu piona.
+    std::string newEnPassant = "-";
 
+    // --- Aktualizacja praw roszady (castling) ---
     auto dropRight = [&](char r) {
         if (castling == "-") return;
         size_t p = castling.find(r);
@@ -314,13 +381,13 @@ void Board::makeMove(const Move &move)
         }
     };
 
-    // 2.1. jeśli poruszył się KRÓL – tracimy obie strony
+    // 1) Poruszył się KRÓL -> tracimy oba prawa tej strony
     if (std::toupper(moved) == 'K') {
-        if (std::isupper(moved)) { dropRight('K'); dropRight('Q'); }
-        else                      { dropRight('k'); dropRight('q'); }
+        if (whiteMoved) { dropRight('K'); dropRight('Q'); }
+        else            { dropRight('k'); dropRight('q'); }
     }
 
-    // 2.2. jeśli poruszyła się WIEŻA ze startowego rogu – tracimy odpowiednie prawo
+    // 2) Poruszyła się WIEŻA ze startowego rogu -> tracimy odpowiednie prawo
     if (moved == 'R') {
         if (move.fromRow == 7 && move.fromCol == 7) dropRight('K'); // h1
         if (move.fromRow == 7 && move.fromCol == 0) dropRight('Q'); // a1
@@ -330,40 +397,94 @@ void Board::makeMove(const Move &move)
         if (move.fromRow == 0 && move.fromCol == 0) dropRight('q'); // a8
     }
 
-    // 2.3. jeśli ZBILIŚMY wieżę przeciwnika ze startowego rogu – też tracą prawo
+    // 3) Zbicie wieży przeciwnika ze startowego rogu -> oni tracą prawo
     if (captured == 'R') {
-        if (move.toRow == 7 && move.toCol == 7) dropRight('K'); // białe tracą O-O
-        if (move.toRow == 7 && move.toCol == 0) dropRight('Q'); // białe tracą O-O-O
+        if (move.toRow == 7 && move.toCol == 7) dropRight('K'); // białe O-O
+        if (move.toRow == 7 && move.toCol == 0) dropRight('Q'); // białe O-O-O
     }
     if (captured == 'r') {
-        if (move.toRow == 0 && move.toCol == 7) dropRight('k'); // czarne tracą O-O
-        if (move.toRow == 0 && move.toCol == 0) dropRight('q'); // czarne tracą O-O-O
+        if (move.toRow == 0 && move.toCol == 7) dropRight('k'); // czarne O-O
+        if (move.toRow == 0 && move.toCol == 0) dropRight('q'); // czarne O-O-O
     }
 
-    // --- wykonanie ruchu figury na pole docelowe ---
-    board[move.toRow][move.toCol]   = moved;
+    // --- Przypadki specjalne ---
+    bool isCastle = (std::toupper(moved) == 'K' && std::abs(move.toCol - move.fromCol) == 2);
+    bool isPawn   = (std::toupper(moved) == 'P');
+
+    // En passant: czy to EP? (cel pusty, skos o 1 i enPassant wskazuje na cel)
+    bool isEnPassantCapture = false;
+    int dir = whiteMoved ? -1 : 1;
+    if (isPawn) {
+        int dr = move.toRow - move.fromRow;
+        int dc = move.toCol - move.fromCol;
+        int adr = std::abs(dr), adc = std::abs(dc);
+        if (adc == 1 && dr == dir && captured == 0 && enPassant != "-") {
+            int epRow, epCol;
+            if (algToCoord(enPassant, epRow, epCol) && epRow == move.toRow && epCol == move.toCol) {
+                isEnPassantCapture = true;
+            }
+        }
+    }
+
+    // Jeśli EP – zdejmij piona z „miniętego” pola (za celem)
+    if (isEnPassantCapture) {
+        int capRow = move.toRow - dir; // pion do zbicia stoi „za” polem celu
+        int capCol = move.toCol;
+        captured = board[capRow][capCol]; // dla licznika półruchów
+        board[capRow][capCol] = 0;
+    }
+
+    // --- Wykonanie ruchu figury ---
+    board[move.toRow][move.toCol] = moved;
     board[move.fromRow][move.fromCol] = 0;
 
-    // --- przesunięcie wieży przy ROSZADZIE ---
-    if (std::toupper(moved) == 'K' && std::abs(move.toCol - move.fromCol) == 2) {
-        // król stoi już na docelowym; teraz przesuń właściwą wieżę
+    // --- Roszada: przesuń wieżę ---
+    if (isCastle) {
         int row = move.toRow;
-        if (move.toCol == 6) {
-            // O-O: wieża z h -> f
+        if (move.toCol == 6) {            // O-O
             board[row][5] = board[row][7];
             board[row][7] = 0;
-        } else if (move.toCol == 2) {
-            // O-O-O: wieża z a -> d
+        } else if (move.toCol == 2) {     // O-O-O
             board[row][3] = board[row][0];
             board[row][0] = 0;
         }
     }
 
-    // --- (na razie nie ruszamy enPassant/halfmove/fullmove) ---
+    // --- Promocja piona (domyślnie do hetmana, jeśli brak litery) ---
+    if (isPawn && (move.toRow == 0 || move.toRow == 7)) {
+        char promo = move.promotion ? move.promotion : 'Q'; // N,B,R,Q
+        if (!whiteMoved) promo = std::tolower(promo);
+        board[move.toRow][move.toCol] = promo;
+    }
 
-    // zmiana strony ruchu
+    // --- Ustawianie enPassant po podwójnym ruchu piona ---
+    if (isPawn) {
+        // jeśli to był ruch o 2 pola – EP to pole „minięte”
+        if ((whiteMoved && move.fromRow == 6 && move.toRow == 4) ||
+            (!whiteMoved && move.fromRow == 1 && move.toRow == 3))
+        {
+            int passRow = move.fromRow + (whiteMoved ? -1 : 1);
+            int passCol = move.fromCol;
+            newEnPassant = coordToAlg(passRow, passCol);
+        }
+    }
+
+    // --- Liczniki & enPassant ---
+    // 50‑move rule: reset po ruchu pionem lub biciu (także EP), inaczej +1
+    if (isPawn || captured != 0 || isEnPassantCapture) halfmoveClock = 0;
+    else halfmoveClock += 1;
+
+    // enPassant: ustaw nowe (po 2‑polowym ruchu piona), w innym wypadku "-"
+    enPassant = newEnPassant;
+
+    // fullmoveNumber: po ruchu czarnych zwiększ o 1
+    char moverBefore = activeColor;            // kto właśnie się ruszał
     activeColor = (activeColor == 'w') ? 'b' : 'w';
+    if (moverBefore == 'b') {
+        fullmoveNumber += 1;
+    }
 }
+
 
 
 std::string Board::checkCastlingReason(const Move &move) const // -> Dodane MS

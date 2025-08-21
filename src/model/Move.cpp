@@ -1,7 +1,7 @@
 //
 // Created by jakub on 06.08.2025.s
 //
-#include "move.h"
+#include "chess/model/Move.h"
 
 bool Move::operator==(const Move &other) const
 {

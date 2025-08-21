@@ -1,0 +1,30 @@
+// Board.h
+#pragma once
+#include <string>
+
+struct Move; // z move.h
+
+class Board {
+public:
+    // Dane pozycji
+    char board[8][8]{};      // 0 = puste, inaczej litera figury
+    char activeColor{'w'};   // 'w' / 'b'
+    std::string castling{"KQkq"};
+    std::string enPassant{"-"};  // np. "e3" lub "-"
+    int halfmoveClock{0};
+    int fullmoveNumber{1};
+
+    // Interfejs publiczny
+    void startBoard();           // inicjalizacja z FEN
+    void printBoard() const;
+
+    // Logika — dalej implementacje w osobnych .cpp
+    bool isPathClear(int r1, int c1, int r2, int c2) const;
+    bool isSquareAttacked(int row, int col, char byColor) const;
+    char getPieceAt(int row, int col) const { return board[row][col]; }
+
+    std::string checkCastlingReason(const Move& move) const;
+
+    bool isMoveValid(const Move& move);
+    void makeMove(const Move& move);
+};

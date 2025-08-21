@@ -2,8 +2,8 @@
 #include <string>
 #include <cctype>
 #include <optional>
-#include "board.h"
-#include "move.h"
+#include "chess/board/Board.h"
+#include "chess/model/Move.h"
 
 static int fileToCol(char f) { return f - 'a'; } // a..h -> 0..7
 static int rankToRow(char r) { return '8' - r; } // 8->0, 1->7

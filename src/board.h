@@ -5,17 +5,9 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <map>
 #include "move.h"
-
-enum class GameState {
-    PLAYING,
-    CHECKMATE,
-    STALEMATE,
-    DRAW_50_MOVES,
-    DRAW_REPETITION,
-    DRAW_INSUFFICIENT_MATERIAL
-};
+#include "game_state.h"
+#include "move_generator.h"
 
 class Board {
 private:
@@ -26,14 +18,10 @@ private:
     int halfmoveClock;
     int fullmoveNumber;
     
-    std::map<std::string, int> positionHistory;
+    GameStateManager gameStateManager;
     
     bool isPathClear(int r1, int c1, int r2, int c2) const;
     bool isSquareAttacked(int row, int col, char byColor) const;
-    
-    std::string boardToString() const;
-    bool hasInsufficientMaterial() const;
-    int countPieces(char piece) const;
 
 public:
     void startBoard();

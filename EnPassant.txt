@@ -1,0 +1,60 @@
+Implementacja bicia w przelocie
+
+Moje tlumaczenie
+
+1. Bicie w przelcie jest mozliwe tylko wtedy gdy pion(niewazne od koloru(ale dla lepszej asymilacji sie bedziemy uzywac bialych 
+dla przykladu)) ruszy sie o 3 pola czyli bialy pion bedacy w rzedzie 5 to bicie w przelocie jest mozliwe tylko wtedy gdy czarny 
+pion poruszy sie o 2 pola z pozycji startowej(czyli dla zobraozwania pseudokodu pion czarny musi sei porsuzyc z rzedu 7 na 5 a nie
+moze tego zrobic z 6 na 5)
+
+Dla przykladu mamy piona sekwnejche ruchow 
+e2e4
+a7a6
+e5e5
+f7f5
+to tutaj moze zostac wykoanne w bicie przelocie i jest bicie z e5 na f6
+
+analogicznie byloby jestli zamisat f7f5 czarne zrobilyby d7d5 to tutaj tez mogloby zostac wykonane bicie w przelocie
+
+2. Jedynym drugim warukiem jest to ze ruch musi zostac wykoany natyhcmiuastowo 
+tzn jesli czarny pojdzie tym pionem na f7f5 lub d7d5 to biuale nie moge wykoanc najpeiwr ruchu skoczkiem czarne robia jakis ruch i 
+wtedy biale by chcialy zrobic bicvie w przelocie to takie zagarnie jest NIELGALNE 
+
+
+
+Tlumaczenie chata:
+1. O co chodzi w biciu w przelocie?
+
+To jest specjalny ruch pionkiem, który można zrobić tylko w bardzo konkretnych okolicznościach.
+Wyjątkowość polega na tym, że bijesz pionka, który przeszedł obok Ciebie, nawet jeśli normalnie nie stanął na polu, na którym mógłbyś go zbić.
+
+2. Normalne bicie pionkiem
+
+Normalnie pionek bije po skosie o jedno pole do przodu:
+
+biały: ↖ lub ↗
+
+czarny: ↙ lub ↘
+
+Czyli np. jeśli biały pionek stoi na e5, to może zbić pionka przeciwnika na d6 lub f6.
+
+3. Co się dzieje przy biciu w przelocie?
+
+Wyobraź sobie, że:
+
+Twój pionek stoi na 5. linii (dla białych to rząd numer 5 od dołu, dla czarnych – rząd numer 4 od dołu).
+
+Przeciwnik wykonuje ruch pionkiem o dwa pola do przodu i przechodzi obok Twojego pionka.
+
+Normalnie ten pionek przeciwnika zatrzymałby się na polu, na którym nie mógłbyś go zbić…
+Ale w szachach jest taki przepis, że w następnym ruchu możesz go zbić tak, jakby przeszedł tylko jedno pole.
+
+4. Zasady bicia w przelocie
+
+Może to zrobić tylko pionek.
+
+Możesz to zrobić tylko w ruchu bezpośrednio po tym, jak przeciwnik przeszedł swoim pionkiem o dwa pola.
+
+Twój pionek musi stać obok pionka, który właśnie wykonał ten ruch (w kolumnie obok).
+
+Po biciu w przelocie Twój pionek przechodzi na pole, które pionek przeciwnika minął (nie to, na którym się zatrzymał), a pionek przeciwnika jest usuwany.

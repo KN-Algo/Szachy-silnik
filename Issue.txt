@@ -1,0 +1,71 @@
+1.   Implementacja roszady
+
+Warunki spelnienia roszady(Moje tlumaczenie) :
+
+a) Ruch królem nie mogl zostac wczesniej wykonany. Czyli nawety jesli wroci na swoje pierwotne miejsce to i tak nie mozna juz 
+zrobic roszady na zadna ze stron 
+
+b) Jesli chodzi o wieze to jest podobnie czyli jesli prawo stronna wieza sie ruszy i wroci na pierwotne miejsce to na tej stronie
+juz nie moze zostac wykonana Roszada z wieza po prawej stronie. Analogicznie z wieza po lewej stronie
+
+c) Nie moze byc zadnych figur pomiedzy  królem a wieza (niezaleznie od koloru figury )
+
+
+b) Roszada nie moze zostac wykonana podczas ataku na  bialego króla (podczas szachu) tzn. jesli powiedzmy krol jest czarna krolowa
+daje szacha na bialym krolu to nie moze on wtedy wykonac roszady 
+
+d) Roszada tez nie moze zostac wykonana jesli przez pola na ktorych krol robilby roszade przeciwna figura czy pionek "patrzy"
+
+Dla zobraozwania dla bilaego krola ktory jest na polu e1 powiedzemy ze wczesniejsze warunki zostaly spelnione 
+ale jest czarny pionek na polu e2 ktory "patrzy" na pole f1 to wtedy rowniez rosada nie moze zostac wykonana ale nie tyczy sie to wiezy
+Tzn jesli np bialopolowy goniec "patrzy" tylko na wieze to i tak roszada moze zostac wykonana 
+
+
+Warubki spelnienia roszady(Tlumaczenie chata )
+Co to jest roszada?
+
+To specjalny, jednorazowy ruch królem i wieżą tego samego koloru.
+W jednym ruchu:
+
+król przesuwa się o 2 pola w prawo (roszada krótka) lub w lewo (roszada długa),
+
+wieża „podbiega” obok króla po jego drugiej stronie.
+
+Na starcie:
+
+białe: król stoi na e1, wieże na a1 i h1,
+
+czarne: król na e8, wieże na a8 i h8.
+
+Kiedy roszada jest DOZWOLONA?
+
+Żeby roszada była legalna, wszystkie warunki muszą być spełnione:
+
+Król nigdy wcześniej nie ruszał się.
+Jeśli raz się ruszył (nawet wrócił), roszady już robić nie wolno.
+
+Wieża biorąca udział też nigdy wcześniej się nie ruszała.
+Jeśli poruszyła się wieża z rogu (nawet wróciła) — z tej strony roszady nie ma.
+
+Między królem a wieżą nie ma żadnych bierek.
+Po drodze musi być pusto.
+
+Król nie może być w szachu w momencie wykonywania roszady.
+Czyli przeciwnik nie może „bić” pola, na którym król właśnie stoi.
+
+Król nie może przechodzić przez pole atakowane.
+Król podczas roszady „mija” pole pośrednie (f1 lub d1 dla białych; f8 lub d8 dla czarnych).
+To pole również nie może być atakowane.
+
+Pole docelowe króla też nie może być atakowane.
+Król nie może „wpaść pod bicie”.
+
+Jeśli choć jeden z punktów 1–6 zawiedzie — roszada jest zabroniona.
+
+Jak to wygląda na planszy (dla białych)?
+
+Roszada krótka (O-O): król z e1 → g1, wieża z h1 → f1.
+
+Roszada długa (O-O-O): król z e1 → c1, wieża z a1 → d1.
+
+Analogicznie dla czarnych z rzędu „8”.

@@ -1,0 +1,34 @@
+﻿name: CI
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-perft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ ninja-build
+      - name: Configure (Release)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j 2
+      - name: Find CLI binary
+        id: findbin
+        shell: bash
+        run: |
+          set -e
+          BIN="$(find build -type f -name 'chess_cli' -o -name 'chess_cli.exe' | head -n1)"
+          if [ -z "$BIN" ]; then
+            echo "CLI not found"; exit 1
+          fi
+          echo "bin=$BIN" >> $GITHUB_OUTPUT
+      - name: Perft smoke (d3/d4)
+        shell: bash
+        run: |
+          set -e
+          echo -e "new\nperft 3\nperft 4\n" | "${{ steps.findbin.outputs.bin }}" | tee out.txt
+          grep -q "perft(3) = 8902" out.txt
+          grep -q "perft(4) = 197281" out.txt

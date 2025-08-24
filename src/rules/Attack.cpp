@@ -1,7 +1,7 @@
-// Attack.cpp
 #include "chess/rules/Attack.h"
 
-bool Board::isPathClear(int r1, int c1, int r2, int c2) const {
+// --- Nowe funkcje kanoniczne ---
+bool Attack::isPathClear(const char board[8][8], int r1, int c1, int r2, int c2) {
     int dr = (r2 > r1) ? 1 : (r2 < r1) ? -1 : 0;
     int dc = (c2 > c1) ? 1 : (c2 < c1) ? -1 : 0;
     int r = r1 + dr, c = c1 + dc;
@@ -12,13 +12,15 @@ bool Board::isPathClear(int r1, int c1, int r2, int c2) const {
     return true;
 }
 
-bool Board::isSquareAttacked(int row, int col, char byColor) const {
+bool Attack::isSquareAttacked(const char board[8][8], int row, int col, char byColor) {
     int dir = (byColor == 'w') ? -1 : 1;
     char pawnChar = (byColor == 'w') ? 'P' : 'p';
-    if (row + dir >= 0 && row + dir < 8) {
-        if (col > 0 && board[row + dir][col - 1] == pawnChar) return true;
-        if (col < 7 && board[row + dir][col + 1] == pawnChar) return true;
+    int pr = row - dir;                         // rząd, na którym stoi pion atakujący to pole
+    if (pr >= 0 && pr < 8) {
+        if (col > 0 && board[pr][col - 1] == pawnChar) return true;
+        if (col < 7 && board[pr][col + 1] == pawnChar) return true;
     }
+
     const int knightMoves[8][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
     char knightChar = (byColor == 'w') ? 'N' : 'n';
     for (auto &m : knightMoves) {
@@ -27,6 +29,7 @@ bool Board::isSquareAttacked(int row, int col, char byColor) const {
             if (board[nr][nc] == knightChar) return true;
         }
     }
+
     char rookChar = (byColor == 'w') ? 'R' : 'r';
     char queenChar = (byColor == 'w') ? 'Q' : 'q';
     const int dirsRook[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
@@ -40,6 +43,7 @@ bool Board::isSquareAttacked(int row, int col, char byColor) const {
             r += d[0]; c += d[1];
         }
     }
+
     char bishopChar = (byColor == 'w') ? 'B' : 'b';
     const int dirsBishop[4][2] = {{1,1},{1,-1},{-1,1},{-1,-1}};
     for (auto &d : dirsBishop) {
@@ -52,6 +56,7 @@ bool Board::isSquareAttacked(int row, int col, char byColor) const {
             r += d[0]; c += d[1];
         }
     }
+
     char kingChar = (byColor == 'w') ? 'K' : 'k';
     for (int dr = -1; dr <= 1; ++dr) {
         for (int dc = -1; dc <= 1; ++dc) {
@@ -63,4 +68,13 @@ bool Board::isSquareAttacked(int row, int col, char byColor) const {
         }
     }
     return false;
+}
+
+// --- Cienkie wrappery klasy Board (zachowujemy istniejący interfejs) ---
+bool Board::isPathClear(int r1, int c1, int r2, int c2) const {
+    return Attack::isPathClear(board, r1, c1, r2, c2);
+}
+
+bool Board::isSquareAttacked(int row, int col, char byColor) const {
+    return Attack::isSquareAttacked(board, row, col, byColor);
 }

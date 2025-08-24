@@ -1,9 +1,12 @@
 #include <iostream>
 #include <string>
 #include <cctype>
+#include <cstdint>
 #include <optional>
 #include "chess/board/Board.h"
 #include "chess/model/Move.h"
+#include "chess/game/GameState.h"
+
 
 static int fileToCol(char f) { return f - 'a'; } // a..h -> 0..7
 static int rankToRow(char r) { return '8' - r; } // 8->0, 1->7
@@ -45,6 +48,28 @@ std::optional<Move> parseLAN(const std::string &s)
     return m;
 }
 
+
+static bool printStateAndShouldEnd(Board& board) {
+    auto state = board.getGameState();
+    std::cout << "Stan: " << board.getGameStateString() << "\n";
+    if (state == GameState::PLAYING && board.isInCheck()) {
+        std::cout << "CHECK!\n";
+    }
+    return state != GameState::PLAYING; // true => koniec partii
+}
+
+static uint64_t perft(Board b, int depth){
+    if (depth == 0) return 1;
+    uint64_t nodes = 0;
+    auto moves = b.getLegalMoves();
+    for (const auto& m : moves){
+        Board nb = b;            // kopia
+        nb.makeMove(m);
+        nodes += perft(nb, depth - 1);
+    }
+    return nodes;
+}
+
 int main()
 {
     Board board;
@@ -61,6 +86,14 @@ int main()
             break;
         if (s == "quit" || s == "exit")
             break;
+        if (s == "perft") {
+            int d;
+            if (!(std::cin >> d)) { std::cout << "Użycie: perft <depth>\n"; break; }
+            uint64_t n = perft(board, d);
+            std::cout << "perft(" << d << ") = " << n << "\n";
+            continue;
+        }
+
 
         auto m = parseLAN(s);
         if (!m)
@@ -73,7 +106,12 @@ int main()
         {
             board.makeMove(*m);
             std::cout << "Ruch wykonany: " << s << "\n";
-            board.printBoard(); // (opcjonalnie) podgląd po ruchu
+            board.printBoard();
+            if (printStateAndShouldEnd(board)) {
+                std::cout << "Koniec partii.\n";
+                break; // wyjście z pętli while(true)
+            }
+
         }
         else
         {

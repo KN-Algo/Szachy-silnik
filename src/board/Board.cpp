@@ -34,6 +34,10 @@ void Board::startBoard() {
     i = spacePos + 1;
 
     fullmoveNumber = std::stoi(fen.substr(i));
+
+    gameStateManager.clearHistory();
+    gameStateManager.addPosition(board, activeColor, castling, enPassant);
+
 }
 
 void Board::printBoard() const {
@@ -49,3 +53,21 @@ void Board::printBoard() const {
     std::cout << "Halfmove clock: " << halfmoveClock << '\n';
     std::cout << "Fullmove number: " << fullmoveNumber << '\n';
 }
+
+std::vector<Move> Board::getLegalMoves() const {
+    return MoveGenerator::generateLegalMoves(board, activeColor, castling, enPassant);
+}
+bool Board::hasLegalMoves() const {
+    return MoveGenerator::hasLegalMoves(board, activeColor, castling, enPassant);
+}
+bool Board::isInCheck() const {
+    return MoveGenerator::isInCheck(board, activeColor);
+}
+GameState Board::getGameState() const {
+    return gameStateManager.checkGameState(board, activeColor, castling, enPassant,
+                                          halfmoveClock, hasLegalMoves(), isInCheck());
+}
+std::string Board::getGameStateString() const {
+    return gameStateManager.getGameStateString(getGameState(), activeColor);
+}
+

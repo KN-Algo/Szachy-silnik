@@ -134,4 +134,8 @@ void Board::makeMove(const Move &move)
     if (moverBefore == 'b') {
         fullmoveNumber += 1;
     }
+
+    // Zapis pozycji po ruchu (dla 3x powtórzenia)
+    gameStateManager.addPosition(board, activeColor, castling, enPassant);
+
 }

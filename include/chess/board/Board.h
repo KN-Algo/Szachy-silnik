@@ -1,6 +1,9 @@
 // Board.h
 #pragma once
 #include <string>
+#include <vector>
+#include "chess/rules/MoveGenerator.h"
+#include "chess/game/GameState.h"
 
 struct Move; // z move.h
 
@@ -13,6 +16,14 @@ public:
     std::string enPassant{"-"};  // np. "e3" lub "-"
     int halfmoveClock{0};
     int fullmoveNumber{1};
+
+    GameStateManager gameStateManager; // możesz dać do private, jeśli wolisz
+
+    std::vector<Move> getLegalMoves() const;
+    bool hasLegalMoves() const;
+    bool isInCheck() const;
+    GameState getGameState() const;
+    std::string getGameStateString() const;
 
     // Interfejs publiczny
     void startBoard();           // inicjalizacja z FEN

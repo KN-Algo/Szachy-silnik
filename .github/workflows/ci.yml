@@ -29,6 +29,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo -e "new\nperft 3\nperft 4\n" | "${{ steps.findbin.outputs.bin }}" | tee out.txt
+          echo -e "perft 3\nperft 4\nquit\n" | "${{ steps.findbin.outputs.bin }}" | tee out.txt
           grep -q "perft(3) = 8902" out.txt
           grep -q "perft(4) = 197281" out.txt
+      

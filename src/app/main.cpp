@@ -87,7 +87,8 @@ int main()
         if (s == "quit" || s == "exit")
             break;
         if (s == "perft") {
-            int d;
+            board.startBoard();
+            int d = 0;
             if (!(std::cin >> d)) { std::cout << "Użycie: perft <depth>\n"; break; }
             uint64_t n = perft(board, d);
             std::cout << "perft(" << d << ") = " << n << "\n";

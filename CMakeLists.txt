@@ -11,6 +11,10 @@ add_library(chess STATIC
         src/model/Move.cpp
         src/rules/MoveGenerator.cpp
         src/game/GameState.cpp
+        src/ai/Evaluator.cpp
+        src/ai/TranspositionTable.cpp
+        src/ai/ZobristHash.cpp
+        src/ai/ChessAI.cpp
 )
 
 target_include_directories(chess PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

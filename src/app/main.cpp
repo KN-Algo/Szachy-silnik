@@ -6,6 +6,7 @@
 #include "chess/board/Board.h"
 #include "chess/model/Move.h"
 #include "chess/game/GameState.h"
+#include "chess/ai/ChessAI.h"
 
 
 static int fileToCol(char f) { return f - 'a'; } // a..h -> 0..7
@@ -92,6 +93,55 @@ int main()
             if (!(std::cin >> d)) { std::cout << "Użycie: perft <depth>\n"; break; }
             uint64_t n = perft(board, d);
             std::cout << "perft(" << d << ") = " << n << "\n";
+            continue;
+        }
+        
+        if (s == "ai") {
+            int depth = 5;  // Domyślna głębokość
+            int timeMs = 5000;  // Domyślny czas w ms
+            
+            // Sprawdź czy podano parametr głębokości (np. "ai 10")
+            size_t spacePos = s.find(' ');
+            if (spacePos != std::string::npos) {
+                try {
+                    depth = std::stoi(s.substr(spacePos + 1));
+                    timeMs = depth * 2000; // Automatycznie dostosuj czas
+                } catch (...) {
+                    // Jeśli nie udało się sparsować, użyj domyślnych wartości
+                }
+            }
+            
+            ChessAI ai;
+            std::cout << "AI szuka najlepszego ruchu (głębokość: " << depth << ", czas: " << timeMs << "ms)...\n";
+            SearchResult result = ai.findBestMove(board.board, board.activeColor, 
+                                               board.castling, board.enPassant, depth, timeMs);
+            
+            std::cout << "Najlepszy ruch znaleziony\n";
+            std::cout << "Ocena: " << result.score << "\n";
+            std::cout << "Głębokość: " << result.depth << "\n";
+            std::cout << "Węzły: " << result.nodesVisited << "\n";
+            std::cout << "Czas: " << result.timeSpent.count() << "ms\n";
+            
+            // Wykonaj ruch AI
+            if (board.isMoveValid(result.bestMove)) {
+                // Konwertuj ruch na notację LAN
+                std::string aiMove = "";
+                aiMove += static_cast<char>('a' + result.bestMove.fromCol);
+                aiMove += static_cast<char>('8' - result.bestMove.fromRow);
+                aiMove += static_cast<char>('a' + result.bestMove.toCol);
+                aiMove += static_cast<char>('8' - result.bestMove.toRow);
+                if (result.bestMove.promotion) {
+                    aiMove += result.bestMove.promotion;
+                }
+                
+                board.makeMove(result.bestMove);
+                std::cout << "Ruch AI: " << aiMove << "\n";
+                board.printBoard();
+                if (printStateAndShouldEnd(board)) {
+                    std::cout << "Koniec partii.\n";
+                    break;
+                }
+            }
             continue;
         }
 

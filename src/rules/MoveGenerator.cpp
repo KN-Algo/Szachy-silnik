@@ -145,7 +145,16 @@ void MoveGenerator::generatePawnMoves(const char board[8][8], int row, int col, 
     int startRow = whitePiece ? 6 : 1;
     
     if (row + dir >= 0 && row + dir < 8 && board[row + dir][col] == 0) {
-        moves.push_back({row, col, row + dir, col, piece, 0});
+        // Sprawdź czy to promocja
+        if ((whitePiece && row + dir == 0) || (!whitePiece && row + dir == 7)) {
+            // Generuj ruchy z promocją do wszystkich figur
+            moves.push_back({row, col, row + dir, col, piece, 0, 'Q'}); // Hetman
+            moves.push_back({row, col, row + dir, col, piece, 0, 'R'}); // Wieża
+            moves.push_back({row, col, row + dir, col, piece, 0, 'B'}); // Goniec
+            moves.push_back({row, col, row + dir, col, piece, 0, 'N'}); // Skoczek
+        } else {
+            moves.push_back({row, col, row + dir, col, piece, 0});
+        }
         
         if (row == startRow && board[row + 2*dir][col] == 0) {
             moves.push_back({row, col, row + 2*dir, col, piece, 0});
@@ -156,7 +165,16 @@ void MoveGenerator::generatePawnMoves(const char board[8][8], int row, int col, 
         if (col + dc >= 0 && col + dc < 8 && row + dir >= 0 && row + dir < 8) {
             char target = board[row + dir][col + dc];
             if (target && (std::isupper(target) != whitePiece)) {
-                moves.push_back({row, col, row + dir, col + dc, piece, target});
+                // Sprawdź czy to promocja
+                if ((whitePiece && row + dir == 0) || (!whitePiece && row + dir == 7)) {
+                    // Generuj ruchy z promocją do wszystkich figur
+                    moves.push_back({row, col, row + dir, col + dc, piece, target, 'Q'}); // Hetman
+                    moves.push_back({row, col, row + dir, col + dc, piece, target, 'R'}); // Wieża
+                    moves.push_back({row, col, row + dir, col + dc, piece, target, 'B'}); // Goniec
+                    moves.push_back({row, col, row + dir, col + dc, piece, target, 'N'}); // Skoczek
+                } else {
+                    moves.push_back({row, col, row + dir, col + dc, piece, target});
+                }
             }
         }
     }

@@ -27,6 +27,7 @@ public:
 
     // Interfejs publiczny
     void startBoard();           // inicjalizacja z FEN
+    void setPositionFromFEN(const std::string& fen);  // ustaw pozycję z FEN
     void printBoard() const;
 
     // Logika — dalej implementacje w osobnych .cpp

@@ -10,11 +10,13 @@
 #include "chess/mqtt/topics.h"
 #include "chess/mqtt/payloads.h"
 
-// >>> Twoje nagłówki silnika:
+
 #include "chess/board/Board.h"
 #include "chess/model/Move.h"
 #include "chess/game/GameState.h"
 #include "chess/utils/Notation.h"   // coordToAlg / algToCoord
+#include "chess/ai/ChessAI.h"
+
 
 using json = nlohmann::json;
 using namespace notation;
@@ -33,7 +35,7 @@ static inline bool valid_sq(const std::string& s) {
     int r, c; return algToCoord(s, r, c);
 }
 
-// Konwersje pól (ale mamy już w Notation.h – zostawiamy wygodne aliasy)
+// Konwersje pól
 static inline std::pair<int,int> to_rc(const std::string& s) {
     int r, c; algToCoord(s, r, c); return {r, c};
 }
@@ -41,7 +43,7 @@ static inline std::string to_sq(int row, int col) {
     return coordToAlg(row, col);
 }
 
-// Minimalny FEN z Board (plansza + podstawowe pola stanu z Twojej klasy)
+// Minimalny FEN z Board
 static std::string fen_from_board(const Board& b) {
     std::string out;
     for (int row = 0; row < 8; ++row) {
@@ -88,7 +90,7 @@ static std::vector<std::string> possibleFrom(Board& board, const std::string& fr
     return moves;
 }
 
-// Składanie Move pod Twoją strukturę
+
 static bool fill_move_from_to(Board& board, const std::string& from, const std::string& to, Move& out, char promo = 0) {
     if (!valid_sq(from) || !valid_sq(to)) return false;
     int r1, c1, r2, c2;
@@ -103,66 +105,10 @@ static bool fill_move_from_to(Board& board, const std::string& from, const std::
     return true;
 }
 
-// --- helpers AI ---
-static inline std::string to_sq(int r, int c); // masz już wyżej
-static std::string fen_from_board(const Board& b); // masz już wyżej
-
-struct AiMoveResult {
-    bool ok = false;
-    Move move{};
-    std::string from, to;
-    std::string fen_after;
-    std::string next_player;       // "white" / "black"
-    std::string special_move;      // opcjonalnie "promotion"
-    std::string promotion_piece;   // opcjonalnie "queen" / "rook" / ...
-};
-
-static AiMoveResult compute_ai_move(Board& board) {
-    AiMoveResult res;
-    // pobierz wszystkie legalne ruchy aktualnej strony
-    auto legals = board.getLegalMoves();
-    if (legals.empty()) return res;
-
-    // Prosty wybór: pierwszy legalny (możesz zamienić na losowy)
-    const auto m = legals.front();
-    res.move = m;
-    res.from = to_sq(m.fromRow, m.fromCol);
-    res.to   = to_sq(m.toRow,   m.toCol);
-
-    // promocja? Jeśli pion dochodzi do końcowego rzędu – ustaw promocję na hetmana
-    char promo = 0;
-    const char moved = board.board[m.fromRow][m.fromCol];
-    const bool white = std::isupper(static_cast<unsigned char>(moved));
-    const bool is_pawn = (std::toupper(static_cast<unsigned char>(moved)) == 'P');
-    if (is_pawn) {
-        if ((white && m.toRow == 0) || (!white && m.toRow == 7)) {
-            promo = white ? 'Q' : 'q';
-            res.special_move = "promotion";
-            res.promotion_piece = "queen";
-        }
-    }
-
-    // wykonaj ruch na wewnętrznej planszy
-    Board tmp = board;
-    Move exec = m;
-    exec.promotion = promo;
-    if (!tmp.isMoveValid(exec)) return res; // asekuracyjnie
-    tmp.makeMove(exec);
-
-    res.fen_after = fen_from_board(tmp);
-    res.next_player = (tmp.activeColor == 'w') ? "white" : "black";
-    res.ok = true;
-
-    // jeśli OK, przepisz nowy stan do głównej planszy
-    board = std::move(tmp);
-    return res;
-}
-
-static void publish_ai_move(mqttwrap::Client& client, const AiMoveResult& ai) {
-    using namespace topics;
-    client.publish(MOVE_AI,
-        make_ai_move_payload(ai.from, ai.to, ai.fen_after, ai.next_player,
-                             ai.special_move, ai.promotion_piece));
+static void copy_board_to_array(const Board& b, char out[8][8]) {
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+            out[r][c] = b.board[r][c]; // u Ciebie: znak figury lub 0
 }
 
 
@@ -184,7 +130,7 @@ int main() {
         return 1;
     }
 
-    // README backendu: statusy publikujemy na 'status/engine'
+
     auto publish_engine_status = [&](const std::string& status, const std::string& msg = "") {
         json j = { {"status", status} };
         if (!msg.empty()) j["message"] = msg;
@@ -233,8 +179,7 @@ int main() {
                 }
                 const auto fen_before = fen_from_board(board);
 
-                // promocja: akceptuj oba style: "promote": "q" oraz
-                // {"special_move":"promotion","promotion_piece":"q"}
+
                 char promo = 0;
                 try {
                     auto j = json::parse(payload);
@@ -298,30 +243,76 @@ int main() {
                 return;
             }
 
-            if (topic == topics::AI_THINK_REQ) {
-            // jeśli podano FEN – załaduj
-            try {
-                auto j = json::parse(payload);
-                if (j.contains("fen") && j["fen"].is_string()) {
-                    const auto fen = j["fen"].get<std::string>();
-                    board.loadFEN(fen); // ignoruj błąd – jeśli zły FEN, to compute_ai_move i tak zwróci res.ok=false
-                }
-            } catch (...) {}
+            if (topic == topics::AI_THINK_REQ) { // "engine/ai/think"
+    publish_engine_status("thinking", "ai thinking");
 
-            publish_engine_status("thinking", "ai thinking");
-            auto ai = compute_ai_move(board);
-            if (!ai.ok) {
-                publish_engine_status("error", "no legal moves");
-                return;
-            }
-            publish_ai_move(client, ai);
-            publish_engine_status("ready", "ai move published");
-            return;
+    try {
+        auto j = json::parse(payload);
+        if (j.contains("fen") && j["fen"].is_string()) {
+            const auto fen = j["fen"].get<std::string>();
+            (void)board.loadFEN(fen); // jeśli FEN błędny, po prostu AI nic nie znajdzie
         }
+    } catch (...) {}
+
+    char arr[8][8];
+    copy_board_to_array(board, arr);
+    char side = board.activeColor;              // 'w' lub 'b'
+    std::string cast = board.castling;          // "KQkq" / "-"
+    std::string ep   = board.enPassant;         // "e3" / "-"
+
+
+    ChessAI ai;
+    auto res = ai.findBestMove(arr, side, cast, ep, /*maxDepth*/5, /*maxTimeMs*/5000);
+
+    // Jeśli nie znalazł
+    if (res.bestMove.fromRow == 0 && res.bestMove.fromCol == 0 &&
+        res.bestMove.toRow == 0 && res.bestMove.toCol == 0 && res.bestMove.promotion == '?') {
+        publish_engine_status("error", "no legal moves");
+        return;
+    }
+
+    Move exec = res.bestMove; // typ Twojego ruchu
+
+
+
+    if (!board.isMoveValid(exec)) {
+        publish_engine_status("error", "ai produced illegal move");
+        return;
+    }
+    board.makeMove(exec);
+    const auto fen_after = fen_from_board(board);
+    const std::string from = to_sq(exec.fromRow, exec.fromCol);
+    const std::string to   = to_sq(exec.toRow,   exec.toCol);
+    const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
+
+    // 6) Publikacja move/ai
+    json j = {
+        {"from", from},
+        {"to", to},
+        {"fen", fen_after},
+        {"next_player", next_player}
+    };
+    // jeśli promocja
+    if (exec.promotion && std::toupper(static_cast<unsigned char>(exec.promotion)) != '?') {
+        j["special_move"]    = "promotion";
+        // mapowanie char → słowo
+        switch (std::toupper(static_cast<unsigned char>(exec.promotion))) {
+            case 'Q': j["promotion_piece"] = "queen";  break;
+            case 'R': j["promotion_piece"] = "rook";   break;
+            case 'B': j["promotion_piece"] = "bishop"; break;
+            case 'N': j["promotion_piece"] = "knight"; break;
+        }
+    }
+    client.publish(topics::MOVE_AI, j);
+
+    publish_engine_status("ready", "ai move published");
+    return;
+}
+
 
 
             // =========================================================================
-            // RESTART (wymagane: control/restart/external)
+            // RESTART
             // =========================================================================
             if (topic == "control/restart/external") {
                 try {

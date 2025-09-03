@@ -7,7 +7,6 @@
 
 namespace mqtt {
     const std::string message::EMPTY_STR{};
-    // Definicje brakujących symboli w wariancie static (workaround dla 1.5.2 na MSVC)
 
 }
 

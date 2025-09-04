@@ -244,70 +244,70 @@ int main() {
             }
 
             if (topic == topics::AI_THINK_REQ) { // "engine/ai/think"
-    publish_engine_status("thinking", "ai thinking");
+                publish_engine_status("thinking", "ai thinking");
 
-    try {
-        auto j = json::parse(payload);
-        if (j.contains("fen") && j["fen"].is_string()) {
-            const auto fen = j["fen"].get<std::string>();
-            (void)board.loadFEN(fen); // jeśli FEN błędny, po prostu AI nic nie znajdzie
-        }
-    } catch (...) {}
+                try {
+                    auto j = json::parse(payload);
+                    if (j.contains("fen") && j["fen"].is_string()) {
+                        const auto fen = j["fen"].get<std::string>();
+                        (void)board.loadFEN(fen); // jeśli FEN błędny, po prostu AI nic nie znajdzie
+                    }
+                } catch (...) {}
 
-    char arr[8][8];
-    copy_board_to_array(board, arr);
-    char side = board.activeColor;              // 'w' lub 'b'
-    std::string cast = board.castling;          // "KQkq" / "-"
-    std::string ep   = board.enPassant;         // "e3" / "-"
-
-
-    ChessAI ai;
-    auto res = ai.findBestMove(arr, side, cast, ep, /*maxDepth*/5, /*maxTimeMs*/5000);
-
-    // Jeśli nie znalazł
-    if (res.bestMove.fromRow == 0 && res.bestMove.fromCol == 0 &&
-        res.bestMove.toRow == 0 && res.bestMove.toCol == 0 && res.bestMove.promotion == '?') {
-        publish_engine_status("error", "no legal moves");
-        return;
-    }
-
-    Move exec = res.bestMove; // typ Twojego ruchu
+                char arr[8][8];
+                copy_board_to_array(board, arr);
+                char side = board.activeColor;              // 'w' lub 'b'
+                std::string cast = board.castling;          // "KQkq" / "-"
+                std::string ep   = board.enPassant;         // "e3" / "-"
 
 
+                ChessAI ai;
+                auto res = ai.findBestMove(arr, side, cast, ep, /*maxDepth*/5, /*maxTimeMs*/5000);
 
-    if (!board.isMoveValid(exec)) {
-        publish_engine_status("error", "ai produced illegal move");
-        return;
-    }
-    board.makeMove(exec);
-    const auto fen_after = fen_from_board(board);
-    const std::string from = to_sq(exec.fromRow, exec.fromCol);
-    const std::string to   = to_sq(exec.toRow,   exec.toCol);
-    const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
+                // Jeśli nie znalazł
+                if (res.bestMove.fromRow == 0 && res.bestMove.fromCol == 0 &&
+                    res.bestMove.toRow == 0 && res.bestMove.toCol == 0 && res.bestMove.promotion == '?') {
+                    publish_engine_status("error", "no legal moves");
+                    return;
+                }
 
-    // 6) Publikacja move/ai
-    json j = {
-        {"from", from},
-        {"to", to},
-        {"fen", fen_after},
-        {"next_player", next_player}
-    };
-    // jeśli promocja
-    if (exec.promotion && std::toupper(static_cast<unsigned char>(exec.promotion)) != '?') {
-        j["special_move"]    = "promotion";
-        // mapowanie char → słowo
-        switch (std::toupper(static_cast<unsigned char>(exec.promotion))) {
-            case 'Q': j["promotion_piece"] = "queen";  break;
-            case 'R': j["promotion_piece"] = "rook";   break;
-            case 'B': j["promotion_piece"] = "bishop"; break;
-            case 'N': j["promotion_piece"] = "knight"; break;
-        }
-    }
-    client.publish(topics::MOVE_AI, j);
+                Move exec = res.bestMove; // typ Twojego ruchu
 
-    publish_engine_status("ready", "ai move published");
-    return;
-}
+
+
+                if (!board.isMoveValid(exec)) {
+                    publish_engine_status("error", "ai produced illegal move");
+                    return;
+                }
+                board.makeMove(exec);
+                const auto fen_after = fen_from_board(board);
+                const std::string from = to_sq(exec.fromRow, exec.fromCol);
+                const std::string to   = to_sq(exec.toRow,   exec.toCol);
+                const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
+
+                // 6) Publikacja move/ai
+                json j = {
+                    {"from", from},
+                    {"to", to},
+                    {"fen", fen_after},
+                    {"next_player", next_player}
+                };
+                // jeśli promocja
+                if (exec.promotion && std::toupper(static_cast<unsigned char>(exec.promotion)) != '?') {
+                    j["special_move"]    = "promotion";
+                    // mapowanie char → słowo
+                    switch (std::toupper(static_cast<unsigned char>(exec.promotion))) {
+                        case 'Q': j["promotion_piece"] = "queen";  break;
+                        case 'R': j["promotion_piece"] = "rook";   break;
+                        case 'B': j["promotion_piece"] = "bishop"; break;
+                        case 'N': j["promotion_piece"] = "knight"; break;
+                    }
+                }
+                client.publish(topics::MOVE_AI, j);
+
+                publish_engine_status("ready", "ai move published");
+                return;
+            }
 
 
 

@@ -52,7 +52,7 @@ void Board::setPositionFromFEN(const std::string& fen) {
             board[r][c] = 0;
         }
     }
-
+  
     int row = 0, col = 0;
     size_t i = 0;
 

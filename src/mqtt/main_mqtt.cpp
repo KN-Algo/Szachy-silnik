@@ -265,6 +265,8 @@ int main()
                 const auto fen_after = fen_from_board(board);
                 const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
 
+                // Publikuj confirmed tylko dla ruchów graczy (nie AI)
+                std::cout << "[VALIDATION] Publishing move confirmed: " << req.from << "->" << req.to << std::endl;
                 client.publish(
                     topics::MOVE_CONFIRMED,
                     make_move_confirmed(req.from, req.to, fen_after, req.physical, next_player)
@@ -278,6 +280,8 @@ int main()
             // MOVE AI
             // =========================================================================
             if (topic == topics::AI_THINK_REQ) { // "move/engine/request"
+                std::cout << "[AI] Received AI request: " << payload << std::endl;
+                
                 static std::string lastAiRequest = "";
                 
                 // Deduplication check
@@ -287,6 +291,7 @@ int main()
                 }
                 lastAiRequest = payload;
 
+                std::cout << "[AI] Processing new AI request" << std::endl;
                 publish_engine_status("thinking", "ai thinking");
 
                 try {
@@ -346,6 +351,7 @@ int main()
                         case 'N': j["promotion_piece"] = "knight"; break;
                     }
                 }
+                std::cout << "[AI] Publishing AI move: " << from << "->" << to << std::endl;
                 client.publish(topics::MOVE_AI, j);
 
                 publish_engine_status("ready", "ai move published");
@@ -358,20 +364,38 @@ int main()
             // RESTART
             // =========================================================================
             if (topic == "control/restart/external") {
+                std::cout << "[RESTART] Received reset request: " << payload << std::endl;
                 try {
                     auto j = json::parse(payload);
                     if (j.contains("fen") && j["fen"].is_string()) {
                         const auto fen = j["fen"].get<std::string>();
+                        std::cout << "[RESTART] Loading FEN: " << fen << std::endl;
                         if (!board.loadFEN(fen)) {
                             // błąd FEN
+                            std::cout << "[RESTART] Failed to load FEN!" << std::endl;
                             client.publish(topics::STATUS_ENGINE, json{{"status","error"},{"message","bad FEN"}});
                             return;
                         }
+                        std::cout << "[RESTART] FEN loaded successfully" << std::endl;
                     } else {
+                        std::cout << "[RESTART] No FEN provided, using start position" << std::endl;
                         board.startBoard();
                     }
+                    std::cout << "[RESTART] Board reset completed" << std::endl;
+                    
+                    // Wyślij aktualny FEN po resecie
+                    const auto current_fen = fen_from_board(board);
+                    std::cout << "[RESTART] Sending current FEN to backend: " << current_fen << std::endl;
+                    
+                    json reset_confirmation = {
+                        {"type", "reset_confirmed"},
+                        {"fen", current_fen}
+                    };
+                    client.publish("engine/reset/confirmed", reset_confirmation);
+                    
                     client.publish(topics::STATUS_ENGINE, json{{"status","ready"},{"message","board restarted"}});
                 } catch (...) {
+                    std::cout << "[RESTART] Exception occurred, using default start position" << std::endl;
                     board.startBoard();
                     client.publish(topics::STATUS_ENGINE, json{{"status","ready"},{"message","board restarted"}});
                 }

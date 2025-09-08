@@ -10,13 +10,11 @@
 #include "chess/mqtt/topics.h"
 #include "chess/mqtt/payloads.h"
 
-
 #include "chess/board/Board.h"
 #include "chess/model/Move.h"
 #include "chess/game/GameState.h"
-#include "chess/utils/Notation.h"   // coordToAlg / algToCoord
+#include "chess/utils/Notation.h" // coordToAlg / algToCoord
 #include "chess/ai/ChessAI.h"
-
 
 using json = nlohmann::json;
 using namespace notation;
@@ -25,39 +23,60 @@ using mqttwrap::MqttConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Util: ENV z defaultem
-static std::string env_or(const char* key, const std::string& def) {
-    if (const char* v = std::getenv(key)) return std::string(v);
+static std::string env_or(const char *key, const std::string &def)
+{
+    if (const char *v = std::getenv(key))
+        return std::string(v);
     return def;
 }
 
 // Walidator „e2” etc.
-static inline bool valid_sq(const std::string& s) {
-    int r, c; return algToCoord(s, r, c);
+static inline bool valid_sq(const std::string &s)
+{
+    int r, c;
+    return algToCoord(s, r, c);
 }
 
 // Konwersje pól
-static inline std::pair<int,int> to_rc(const std::string& s) {
-    int r, c; algToCoord(s, r, c); return {r, c};
+static inline std::pair<int, int> to_rc(const std::string &s)
+{
+    int r, c;
+    algToCoord(s, r, c);
+    return {r, c};
 }
-static inline std::string to_sq(int row, int col) {
+static inline std::string to_sq(int row, int col)
+{
     return coordToAlg(row, col);
 }
 
 // Minimalny FEN z Board
-static std::string fen_from_board(const Board& b) {
+static std::string fen_from_board(const Board &b)
+{
     std::string out;
-    for (int row = 0; row < 8; ++row) {
+    for (int row = 0; row < 8; ++row)
+    {
         int empty = 0;
-        for (int col = 0; col < 8; ++col) {
+        for (int col = 0; col < 8; ++col)
+        {
             char p = b.board[row][col];
-            if (p == 0) { empty++; }
-            else {
-                if (empty) { out += std::to_string(empty); empty = 0; }
+            if (p == 0)
+            {
+                empty++;
+            }
+            else
+            {
+                if (empty)
+                {
+                    out += std::to_string(empty);
+                    empty = 0;
+                }
                 out += p;
             }
         }
-        if (empty) out += std::to_string(empty);
-        if (row != 7) out += '/';
+        if (empty)
+            out += std::to_string(empty);
+        if (row != 7)
+            out += '/';
     }
     out += ' ';
     out += (b.activeColor == 'w' ? 'w' : 'b');
@@ -73,15 +92,20 @@ static std::string fen_from_board(const Board& b) {
 }
 
 // Zwróć listę TO-squares z jednego FROM
-static std::vector<std::string> possibleFrom(Board& board, const std::string& fromSq) {
+static std::vector<std::string> possibleFrom(Board &board, const std::string &fromSq)
+{
     std::vector<std::string> moves;
-    if (!valid_sq(fromSq)) return moves;
+    if (!valid_sq(fromSq))
+        return moves;
 
     auto legals = board.getLegalMoves();
-    int r0, c0; algToCoord(fromSq, r0, c0);
+    int r0, c0;
+    algToCoord(fromSq, r0, c0);
     moves.reserve(8);
-    for (const auto& m : legals) {
-        if (m.fromRow == r0 && m.fromCol == c0) {
+    for (const auto &m : legals)
+    {
+        if (m.fromRow == r0 && m.fromCol == c0)
+        {
             moves.push_back(to_sq(m.toRow, m.toCol));
         }
     }
@@ -90,54 +114,61 @@ static std::vector<std::string> possibleFrom(Board& board, const std::string& fr
     return moves;
 }
 
-
-static bool fill_move_from_to(Board& board, const std::string& from, const std::string& to, Move& out, char promo = 0) {
-    if (!valid_sq(from) || !valid_sq(to)) return false;
+static bool fill_move_from_to(Board &board, const std::string &from, const std::string &to, Move &out, char promo = 0)
+{
+    if (!valid_sq(from) || !valid_sq(to))
+        return false;
     int r1, c1, r2, c2;
     algToCoord(from, r1, c1);
-    algToCoord(to,   r2, c2);
+    algToCoord(to, r2, c2);
 
-    out.fromRow = r1; out.fromCol = c1;
-    out.toRow   = r2; out.toCol   = c2;
-    out.movedPiece    = board.board[r1][c1];
+    out.fromRow = r1;
+    out.fromCol = c1;
+    out.toRow = r2;
+    out.toCol = c2;
+    out.movedPiece = board.board[r1][c1];
     out.capturedPiece = board.board[r2][c2];
-    out.promotion     = promo;
+    out.promotion = promo;
     return true;
 }
 
-static void copy_board_to_array(const Board& b, char out[8][8]) {
+static void copy_board_to_array(const Board &b, char out[8][8])
+{
     for (int r = 0; r < 8; ++r)
         for (int c = 0; c < 8; ++c)
             out[r][c] = b.board[r][c]; // u Ciebie: znak figury lub 0
 }
 
-
-int main() {
+int main()
+{
     // ── Inicjalizacja planszy
     Board board;
-    board.startBoard();  // startowe ustawienie
+    board.startBoard(); // startowe ustawienie
 
     // ── Konfiguracja MQTT
     MqttConfig cfg;
-    cfg.host      = env_or("MQTT_HOST", "localhost");
-    cfg.port      = std::stoi(env_or("MQTT_PORT", "1883"));
+    cfg.host = env_or("MQTT_HOST", "localhost");
+    cfg.port = std::stoi(env_or("MQTT_PORT", "1883"));
     cfg.client_id = env_or("MQTT_CLIENT_ID", "chess-engine");
-    cfg.qos       = 1;
+    cfg.qos = 1;
 
     Client client(cfg);
-    if (!client.connect()) {
+    if (!client.connect())
+    {
         std::cerr << "[MQTT] Connection failed\n";
         return 1;
     }
 
-
-    auto publish_engine_status = [&](const std::string& status, const std::string& msg = "") {
-        json j = { {"status", status} };
-        if (!msg.empty()) j["message"] = msg;
+    auto publish_engine_status = [&](const std::string &status, const std::string &msg = "")
+    {
+        json j = {{"status", status}};
+        if (!msg.empty())
+            j["message"] = msg;
         client.publish("status/engine", j);
     };
 
-    client.set_message_handler([&](const std::string& topic, const std::string& payload) {
+    client.set_message_handler([&](const std::string &topic, const std::string &payload)
+                               {
         try {
             // =========================================================================
             // POSSIBLE MOVES
@@ -246,7 +277,16 @@ int main() {
             // =========================================================================
             // MOVE AI
             // =========================================================================
-            if (topic == topics::AI_THINK_REQ) { // "engine/ai/think"
+            if (topic == topics::AI_THINK_REQ) { // "move/engine/request"
+                static std::string lastAiRequest = "";
+                
+                // Deduplication check
+                if (lastAiRequest == payload) {
+                    std::cout << "[AI] Ignoring duplicate AI request\n";
+                    return;
+                }
+                lastAiRequest = payload;
+
                 publish_engine_status("thinking", "ai thinking");
 
                 try {
@@ -347,18 +387,15 @@ int main() {
             try {
                 publish_engine_status("error", e.what());
             } catch (...) {}
-        }
-    });
+        } });
 
     // Subskrypcje wymagane przez backend
     client.subscribe(topics::POSSIBLE_MOVES_REQ, 1); // engine/possible_moves/request
     client.subscribe(topics::MOVE_ENGINE_REQ, 1);    // move/engine
     client.subscribe("control/restart/external", 1); // reset stanu (fen opcjonalny)
-    client.subscribe(topics::AI_THINK_REQ, 1); // engine/ai/think
-
+    client.subscribe(topics::AI_THINK_REQ, 1);       // engine/ai/think
 
     std::cout << "Engine MQTT bridge up. Listening… (Ctrl+C to exit)\n";
     client.loop_forever();
     return 0;
 }
-

@@ -5,6 +5,41 @@
 #include <string>
 #include <cctype>
 
+
+bool Board::loadFEN(const std::string& fen) {
+    std::istringstream ss(fen);
+    std::string placement, active, castl, ep;
+    int half = 0, full = 1;
+
+    if (!(ss >> placement >> active >> castl >> ep >> half >> full)) {
+        return false;
+    }
+
+    // wyczyść planszę
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+            board[r][c] = 0;
+
+    // rozłóż bierki z pierwszego pola FEN
+    int row = 0, col = 0;
+    for (char ch : placement) {
+        if (ch == '/') { ++row; col = 0; continue; }
+        if (std::isdigit(static_cast<unsigned char>(ch))) { col += ch - '0'; continue; }
+        if (row < 8 && col < 8) board[row][col++] = ch;
+        else return false;
+    }
+    if (row != 7) return false;
+
+    // pozostałe pola stanu
+    activeColor    = (active == "w" ? 'w' : 'b');
+    castling       = (castl == "-" ? "" : castl);
+    enPassant      = (ep == "-" ? "" : ep);
+    halfmoveClock  = half;
+    fullmoveNumber = full;
+    return true;
+}
+
+
 void Board::startBoard() {
     std::string fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     setPositionFromFEN(fen);
@@ -17,7 +52,7 @@ void Board::setPositionFromFEN(const std::string& fen) {
             board[r][c] = 0;
         }
     }
-    
+  
     int row = 0, col = 0;
     size_t i = 0;
 

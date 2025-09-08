@@ -26,7 +26,7 @@ SearchResult ChessAI::iterativeDeepening(const char board[8][8], char activeColo
     
     // Generuj wszystkie legalne ruchy
     std::vector<Move> moves = MoveGenerator::generateLegalMoves(board, activeColor, castling, enPassant);
-    
+  
     // Sprawdź liczbę ruchów
     if (moves.empty()) {
         std::cout << "UWAGA: AI nie znalazł żadnych legalnych ruchów!" << std::endl;
@@ -71,7 +71,7 @@ SearchResult ChessAI::iterativeDeepening(const char board[8][8], char activeColo
             if (move.promotion) {
                 tempBoard[move.toRow][move.toCol] = move.promotion;
             }
-            
+
             // Zmień stronę do ruchu
             tempActiveColor = (tempActiveColor == 'w') ? 'b' : 'w';
             
@@ -111,8 +111,8 @@ SearchResult ChessAI::iterativeDeepening(const char board[8][8], char activeColo
             std::cout << "UWAGA: AI nie znalazło żadnego ruchu!" << std::endl;
             break;
         }
-        
-        std::cout << "Głębokość " << depth << ": " << result.score 
+
+        std::cout << "Głębokość " << depth << ": " << result.score
                   << " (węzły: " << result.nodesVisited << ")" << std::endl;
     }
     
@@ -169,8 +169,6 @@ int ChessAI::negamax(const char board[8][8], char activeColor, const std::string
     // Generuj wszystkie legalne ruchy
     std::vector<Move> moves = MoveGenerator::generateLegalMoves(board, activeColor, castling, enPassant);
     
-
-    
     // Sortuj ruchy dla lepszego Alfa-Beta Pruning
     sortMoves(moves, board, activeColor, castling, enPassant);
     
@@ -200,7 +198,7 @@ int ChessAI::negamax(const char board[8][8], char activeColor, const std::string
         if (move.promotion) {
             tempBoard[move.toRow][move.toCol] = move.promotion;
         }
-        
+      
         // Zmień stronę do ruchu
         tempActiveColor = (tempActiveColor == 'w') ? 'b' : 'w';
         

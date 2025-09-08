@@ -21,3 +21,22 @@ target_include_directories(chess PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_executable(chess_cli src/app/main.cpp)
 target_link_libraries(chess_cli PRIVATE chess)
+
+find_package(PahoMqttCpp CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+
+add_executable(engine_mqtt
+        src/mqtt/main_mqtt.cpp
+        src/mqtt/mqtt_client.cpp
+)
+
+target_include_directories(engine_mqtt PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(engine_mqtt PRIVATE
+        chess
+        PahoMqttCpp::paho-mqttpp3
+        nlohmann_json::nlohmann_json
+)
+

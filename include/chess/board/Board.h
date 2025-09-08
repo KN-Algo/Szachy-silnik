@@ -24,6 +24,7 @@ public:
     bool isInCheck() const;
     GameState getGameState() const;
     std::string getGameStateString() const;
+    bool loadFEN(const std::string& fen);
 
     // Interfejs publiczny
     void startBoard();           // inicjalizacja z FEN

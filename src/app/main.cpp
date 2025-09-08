@@ -144,7 +144,7 @@ int main()
             }
             continue;
         }
-        
+      
         if (s == "fen") {
             std::cout << "Podaj pozycję FEN: ";
             std::cin.ignore(); // Wyczyść bufor

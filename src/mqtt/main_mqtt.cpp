@@ -243,6 +243,9 @@ int main() {
                 return;
             }
 
+            // =========================================================================
+            // MOVE AI
+            // =========================================================================
             if (topic == topics::AI_THINK_REQ) { // "engine/ai/think"
                 publish_engine_status("thinking", "ai thinking");
 

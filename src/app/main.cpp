@@ -145,6 +145,19 @@ int main()
             continue;
         }
 
+        if (s == "fen") {
+            std::cout << "Podaj pozycję FEN: ";
+            std::cin.ignore(); // Wyczyść bufor
+            std::string fen;
+            std::getline(std::cin, fen);
+            if (!fen.empty()) {
+                // Ustaw pozycję z FEN
+                board.setPositionFromFEN(fen);
+                std::cout << "Pozycja ustawiona z FEN\n";
+                board.printBoard();
+            }
+            continue;
+        }
 
         auto m = parseLAN(s);
         if (!m)

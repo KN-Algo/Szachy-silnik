@@ -1,3 +1,4 @@
+// main_mqtt.cpp
 #include <iostream>
 #include <cstdlib>
 #include <vector>
@@ -13,7 +14,7 @@
 #include "chess/board/Board.h"
 #include "chess/model/Move.h"
 #include "chess/game/GameState.h"
-#include "chess/utils/Notation.h" // coordToAlg / algToCoord
+#include "chess/utils/Notation.h"   // coordToAlg / algToCoord
 #include "chess/ai/ChessAI.h"
 
 using json = nlohmann::json;
@@ -22,61 +23,40 @@ using mqttwrap::Client;
 using mqttwrap::MqttConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Util: ENV z defaultem
-static std::string env_or(const char *key, const std::string &def)
-{
-    if (const char *v = std::getenv(key))
-        return std::string(v);
+// ENV z defaultem
+static std::string env_or(const char* key, const std::string& def) {
+    if (const char* v = std::getenv(key)) return std::string(v);
     return def;
 }
 
-// Walidator „e2” etc.
-static inline bool valid_sq(const std::string &s)
-{
-    int r, c;
-    return algToCoord(s, r, c);
+// Walidator „e2”
+static inline bool valid_sq(const std::string& s) {
+    int r, c; return algToCoord(s, r, c);
 }
 
 // Konwersje pól
-static inline std::pair<int, int> to_rc(const std::string &s)
-{
-    int r, c;
-    algToCoord(s, r, c);
-    return {r, c};
+static inline std::pair<int,int> to_rc(const std::string& s) {
+    int r, c; algToCoord(s, r, c); return {r, c};
 }
-static inline std::string to_sq(int row, int col)
-{
+static inline std::string to_sq(int row, int col) {
     return coordToAlg(row, col);
 }
 
-// Minimalny FEN z Board
-static std::string fen_from_board(const Board &b)
-{
+// Minimalny FEN z aktualnego Board (bez żadnych cudów)
+static std::string fen_from_board(const Board& b) {
     std::string out;
-    for (int row = 0; row < 8; ++row)
-    {
+    for (int row = 0; row < 8; ++row) {
         int empty = 0;
-        for (int col = 0; col < 8; ++col)
-        {
+        for (int col = 0; col < 8; ++col) {
             char p = b.board[row][col];
-            if (p == 0)
-            {
-                empty++;
-            }
-            else
-            {
-                if (empty)
-                {
-                    out += std::to_string(empty);
-                    empty = 0;
-                }
+            if (p == 0) { empty++; }
+            else {
+                if (empty) { out += std::to_string(empty); empty = 0; }
                 out += p;
             }
         }
-        if (empty)
-            out += std::to_string(empty);
-        if (row != 7)
-            out += '/';
+        if (empty) out += std::to_string(empty);
+        if (row != 7) out += '/';
     }
     out += ' ';
     out += (b.activeColor == 'w' ? 'w' : 'b');
@@ -91,84 +71,195 @@ static std::string fen_from_board(const Board &b)
     return out;
 }
 
-// Zwróć listę TO-squares z jednego FROM
-static std::vector<std::string> possibleFrom(Board &board, const std::string &fromSq)
-{
+// Lista TO z jednego FROM (z legalnych ruchów silnika)
+static std::vector<std::string> possibleFrom(Board& board, const std::string& fromSq) {
     std::vector<std::string> moves;
-    if (!valid_sq(fromSq))
-        return moves;
+    if (!valid_sq(fromSq)) return moves;
 
-    auto legals = board.getLegalMoves();
     int r0, c0;
-    algToCoord(fromSq, r0, c0);
-    moves.reserve(8);
-    for (const auto &m : legals)
-    {
-        if (m.fromRow == r0 && m.fromCol == c0)
-        {
+    if (!algToCoord(fromSq, r0, c0)) return moves;
+
+    // Jeśli na polu nie ma naszej bierki – nie ma ruchów
+    if (board.board[r0][c0] == 0) return moves;
+
+    // Weź legalne ruchy z silnika (uwzględnia: szachy, roszady, EP, promocje)
+    const auto legals = board.getLegalMoves();
+
+    for (const auto& m : legals) {
+        if (m.fromRow == r0 && m.fromCol == c0) {
             moves.push_back(to_sq(m.toRow, m.toCol));
         }
     }
+
     std::sort(moves.begin(), moves.end());
     moves.erase(std::unique(moves.begin(), moves.end()), moves.end());
     return moves;
 }
 
-static bool fill_move_from_to(Board &board, const std::string &from, const std::string &to, Move &out, char promo = 0)
-{
-    if (!valid_sq(from) || !valid_sq(to))
-        return false;
+
+// Wypełnij Move (pola i ew. promocję)
+static bool fill_move_from_to(Board& board, const std::string& from, const std::string& to, Move& out, char promo = 0) {
+    if (!valid_sq(from) || !valid_sq(to)) return false;
     int r1, c1, r2, c2;
     algToCoord(from, r1, c1);
-    algToCoord(to, r2, c2);
+    algToCoord(to,   r2, c2);
 
-    out.fromRow = r1;
-    out.fromCol = c1;
-    out.toRow = r2;
-    out.toCol = c2;
-    out.movedPiece = board.board[r1][c1];
-    out.capturedPiece = board.board[r2][c2];
-    out.promotion = promo;
+    out.fromRow = r1; out.fromCol = c1;
+    out.toRow   = r2; out.toCol   = c2;
+    out.movedPiece    = board.board[r1][c1];
+    out.capturedPiece = board.board[r2][c2]; // przy EP cel jest pusty – to normalne
+    out.promotion     = promo;
     return true;
 }
 
-static void copy_board_to_array(const Board &b, char out[8][8])
-{
-    for (int r = 0; r < 8; ++r)
-        for (int c = 0; c < 8; ++c)
-            out[r][c] = b.board[r][c]; // u Ciebie: znak figury lub 0
+// Czy są inne figury tego samego typu (i koloru) mogące legalnie dojść na to samo pole?
+static void san_disambiguation_before_move(
+    const Board& board_before,
+    const Move& m,                 // wykonywany ruch
+    bool& needFile, bool& needRank // wynik: dopisać plik/rząd w SAN?
+){
+    needFile = false; needRank = false;
+
+    const char moved = board_before.board[m.fromRow][m.fromCol];
+    const bool isPawn = std::toupper(static_cast<unsigned char>(moved))=='P';
+    if (isPawn) return; // piony w SAN nie potrzebują dysambiguacji (plik przy biciu już rozróżnia)
+
+    // Zbierz wszystkie legalne ruchy z pozycji "przed ruchem"
+    auto legals = const_cast<Board&>(board_before).getLegalMoves();
+
+    // Szukamy innych ruchów na to samo pole (ta sama figura i kolor, inny "from")
+    std::vector<std::pair<int,int>> colliders;
+    for (const auto& x : legals) {
+        if (x.toRow==m.toRow && x.toCol==m.toCol) {
+            char p = board_before.board[x.fromRow][x.fromCol];
+            if (p != 0 &&
+                std::toupper(static_cast<unsigned char>(p)) == std::toupper(static_cast<unsigned char>(moved)) &&
+                // ten sam kolor:
+                (std::isupper(static_cast<unsigned char>(p)) == std::isupper(static_cast<unsigned char>(moved))) &&
+                // inny start:
+                !(x.fromRow==m.fromRow && x.fromCol==m.fromCol))
+            {
+                colliders.emplace_back(x.fromRow, x.fromCol);
+            }
+        }
+    }
+    if (colliders.empty()) return; // brak konfliktu
+
+    // Jeśli któryś ma inny plik (kolumnę), zwykle wystarczy podać plik.
+    bool sameFileAll = true;
+    bool sameRankAll = true;
+
+    for (auto [r,c] : colliders) {
+        if (c != m.fromCol) sameFileAll = false; // są różne pliki — plik rozróżni
+        if (r != m.fromRow) sameRankAll = false; // są różne rzędy — rząd rozróżni
+    }
+
+    // Reguły SAN:
+    // 1) jeśli plik rozróżnia jednoznacznie — podaj plik,
+    // 2) else jeśli rząd rozróżnia — podaj rząd,
+    // 3) else (nie rozróżnia ani plik, ani rząd) — podaj oba.
+    // (Uwaga: sameFileAll==true oznacza: wszystkie kolidują W TYM SAMYM pliku -> plik NIE rozróżnia)
+    bool fileDistinguishes = !sameFileAll;
+    bool rankDistinguishes = !sameRankAll;
+
+    if (fileDistinguishes) { needFile = true; needRank = false; }
+    else if (rankDistinguishes) { needFile = false; needRank = true; }
+    else { needFile = true; needRank = true; }
+}
+static std::string san_letter_for_piece(char piece) {
+    switch (std::toupper(static_cast<unsigned char>(piece))) {
+        case 'N': return "N";
+        case 'B': return "B";
+        case 'R': return "R";
+        case 'Q': return "Q";
+        case 'K': return "K";
+        default:  return "";
+    }
+}
+static std::string make_san_full(
+    const Board& board_before, // pozycja PRZED ruchem
+    const Move& m,             // ruch (z wypełnionym movedPiece/capturedPiece/promotion)
+    bool isCastle, bool isCastleKingSide,
+    bool isCapture, bool isEnPassant,
+    bool isCheck, bool isMate
+){
+    // Roszada
+    if (isCastle) return isCastleKingSide ? "0-0" : "0-0-0";
+
+    const char moved = m.movedPiece;
+    const bool isPawn = std::toupper(static_cast<unsigned char>(moved))=='P';
+
+    std::string san;
+
+    // 1) litera figury (pion bez litery)
+    if (!isPawn) san += san_letter_for_piece(moved);
+
+    // 2) dysambiguacja (tylko dla figur innych niż pion)
+    bool needFile=false, needRank=false;
+    if (!isPawn) san_disambiguation_before_move(board_before, m, needFile, needRank);
+    if (!isPawn) {
+        if (needFile) san += static_cast<char>('a' + m.fromCol);
+        if (needRank) san += static_cast<char>('1' + (7 - m.fromRow));
+    }
+
+    // 3) bicie (dla piona przy biciu SAN zaczyna się od pliku piona)
+    if (isPawn && isCapture) san += static_cast<char>('a' + m.fromCol);
+    if (isCapture) san += 'x';
+
+    // 4) pole docelowe
+    san += coordToAlg(m.toRow, m.toCol);
+
+    // 5) promocja
+    if (m.promotion && std::toupper(static_cast<unsigned char>(m.promotion)) != '?') {
+        san += '=';
+        san += static_cast<char>(std::toupper(static_cast<unsigned char>(m.promotion))); // =Q/R/B/N
+    }
+
+    // 6) sufiks + / #
+    if (isMate)      san += '#';
+    else if (isCheck) san += '+';
+
+    return san;
 }
 
-int main()
-{
-    // ── Inicjalizacja planszy
-    Board board;
-    board.startBoard(); // startowe ustawienie
+// Mapowanie char promocji -> nazwa dla backendu
+static const char* promo_name(char p) {
+    switch (std::toupper(static_cast<unsigned char>(p))) {
+        case 'Q': return "queen";
+        case 'R': return "rook";
+        case 'B': return "bishop";
+        case 'N': return "knight";
+        default:  return "";
+    }
+}
 
-    // ── Konfiguracja MQTT
+// ─────────────────────────────────────────────────────────────────────────────
+
+int main() {
+    // Inicjalizacja planszy
+    Board board;
+    board.startBoard();
+
+    // Konfiguracja MQTT
     MqttConfig cfg;
-    cfg.host = env_or("MQTT_HOST", "localhost");
-    cfg.port = std::stoi(env_or("MQTT_PORT", "1883"));
+    cfg.host      = env_or("MQTT_HOST", "localhost");
+    cfg.port      = std::stoi(env_or("MQTT_PORT", "1883"));
     cfg.client_id = env_or("MQTT_CLIENT_ID", "chess-engine");
-    cfg.qos = 1;
+    cfg.qos       = 1;
 
     Client client(cfg);
-    if (!client.connect())
-    {
+    if (!client.connect()) {
         std::cerr << "[MQTT] Connection failed\n";
         return 1;
     }
 
-    auto publish_engine_status = [&](const std::string &status, const std::string &msg = "")
-    {
-        json j = {{"status", status}};
-        if (!msg.empty())
-            j["message"] = msg;
-        client.publish("status/engine", j);
+    auto publish_engine_status = [&](const std::string& status, const std::string& msg = "") {
+        json j = { {"status", status} };
+        if (!msg.empty()) j["message"] = msg;
+        client.publish(topics::STATUS_ENGINE, j);
     };
 
-    client.set_message_handler([&](const std::string &topic, const std::string &payload)
-                               {
+    client.set_message_handler([&](const std::string& topic, const std::string& payload) {
         try {
             // =========================================================================
             // POSSIBLE MOVES
@@ -177,6 +268,8 @@ int main()
                 publish_engine_status("thinking", "generating moves");
 
                 auto req = PossibleMovesReq::parse(payload); // { position, fen }
+
+                // Opcjonalna synchronizacja pozycji
                 if (!req.fen.empty()) {
                     if (!board.loadFEN(req.fen)) {
                         publish_engine_status("error", "bad FEN in possible_moves/request");
@@ -184,7 +277,9 @@ int main()
                     }
                 }
 
+                // Zwróć ruchy wyłącznie z generatora silnika
                 auto moves = possibleFrom(board, req.position);
+
                 client.publish(
                     topics::POSSIBLE_MOVES_RES,
                     make_possible_moves_response(req.position, moves)
@@ -206,34 +301,29 @@ int main()
                     if (!board.loadFEN(req.current_fen)) {
                         publish_engine_status("error", "bad current_fen");
                         return;
-                        }
+                    }
                 }
-                const auto fen_before = fen_from_board(board);
+                const std::string fen_before = fen_from_board(board);
 
-
+                // ewentualna figura promocji z requestu (tylko z MoveEngineReq)
                 char promo = 0;
-                try {
-                    auto j = json::parse(payload);
-                    if (j.contains("promote") && j["promote"].is_string()) {
-                        std::string ps = j["promote"].get<std::string>();
-                        if (!ps.empty()) promo = std::toupper(ps[0]);
-                    }
-                    if (j.contains("special_move") && j["special_move"].is_string()
-                        && j["special_move"] == "promotion"
-                        && j.contains("promotion_piece") && j["promotion_piece"].is_string()) {
-                        std::string pp = j["promotion_piece"].get<std::string>();
-                        if (!pp.empty()) promo = std::toupper(pp[0]);
-                    }
-                } catch (...) {}
+                if (req.type == "promotion" && !req.promotion_piece.empty()) {
+                    // "queen"/"rook"/"bishop"/"knight" -> 'Q'/'R'/'B'/'N'
+                    char p = std::toupper(static_cast<unsigned char>(req.promotion_piece[0]));
+                    // nadaj wielkość litery wg koloru wykonującego ruch
+                    const auto [r_from, c_from] = to_rc(req.from);
+                    const char movedHere = board.board[r_from][c_from];
+                    const bool whiteMove = std::isupper(static_cast<unsigned char>(movedHere));
+                    promo = whiteMove ? p : static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
+                }
+
 
                 Move m{};
-
-                // jeśli podano figurę promocji – ustaw poprawną literę (biała = wielka, czarna = mała)
+                // jeżeli podano promocję – ustaw literę w odpowiedniej wielkości
                 if (promo) {
                     const auto [r, c] = to_rc(req.from);
-                    const char moved = board.board[r][c];
-                    const bool whiteMove = std::isupper(static_cast<unsigned char>(moved));
-
+                    const char movedHere = board.board[r][c];
+                    const bool whiteMove = std::isupper(static_cast<unsigned char>(movedHere));
                     promo = whiteMove
                         ? static_cast<char>(std::toupper(static_cast<unsigned char>(promo)))
                         : static_cast<char>(std::tolower(static_cast<unsigned char>(promo)));
@@ -248,8 +338,7 @@ int main()
                     return;
                 }
 
-
-                // Walidacja PRZED wykonaniem
+                // Walidacja silnikiem (zero równoległej logiki)
                 const bool legal = board.isMoveValid(m);
                 if (!legal) {
                     client.publish(
@@ -260,164 +349,237 @@ int main()
                     return;
                 }
 
-                // Wykonaj ruch i publikuj confirmed z FEN po ruchu + next_player
+                // ── ZBIÓR DANYCH DO OZNAKOWANIA RUCHU (przed wykonaniem)
+                const std::string prevEP = board.enPassant; // np. "e6" / "-"
+                const bool whiteMoved = std::isupper(static_cast<unsigned char>(m.movedPiece));
+                const bool isPawn     = (std::toupper(static_cast<unsigned char>(m.movedPiece)) == 'P');
+                const bool targetEmptyBefore = (m.capturedPiece == 0);
+
+                // czy to roszada (wg wewnętrznego kształtu ruchu króla: delta kolumny == 2)
+                const bool isCastle = (std::toupper(static_cast<unsigned char>(m.movedPiece)) == 'K'
+                                       && std::abs(m.toCol - m.fromCol) == 2
+                                       && m.toRow == m.fromRow);
+                const bool isCastleKingSide = isCastle && (m.toCol > m.fromCol);
+
+                // EP gdy: pion, ruch po skosie, cel pusty, a TO == poprzednie enPassant
+                const std::string toAlg = to_sq(m.toRow, m.toCol);
+                const bool isEnPassant = (isPawn && m.fromCol != m.toCol && targetEmptyBefore
+                                          && !prevEP.empty() && prevEP != "-" && toAlg == prevEP);
+
+                // czy było bicie (z uwzględnieniem EP)
+                const bool isCapture = (!targetEmptyBefore) || isEnPassant;
+                Board board_before = board;
+                // ── Wykonanie
                 board.makeMove(m);
-                const auto fen_after = fen_from_board(board);
+
+                // ── Po ruchu: stan, FEN, „kto następny”, check/checkmate
+                const std::string fen_after = fen_from_board(board);
                 const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
+                const bool gives_check = board.isInCheck(); // strona na posunięciu jest w szachu? (czyli ruch dał szacha) :contentReference[oaicite:2]{index=2}
+                const GameState gs = board.getGameState();  // CHECKMATE/STALEMATE/PLAYING itd. :contentReference[oaicite:3]{index=3}
 
-                // Publikuj confirmed tylko dla ruchów graczy (nie AI)
-                std::cout << "[VALIDATION] Publishing move confirmed: " << req.from << "->" << req.to << std::endl;
-                client.publish(
-                    topics::MOVE_CONFIRMED,
-                    make_move_confirmed(req.from, req.to, fen_after, req.physical, next_player)
-                );
+                // ── Notation/Special/Additional
+                json j = {
+                    {"from", req.from},
+                    {"to",   req.to},
+                    {"fen",  fen_after},
+                    {"next_player", next_player},
+                    {"physical", req.physical}
+                };
 
+                // special_move + dodatkowy ruch wieży przy roszadzie
+                if (isCastle) {
+                    j["special_move"] = isCastleKingSide ? "castling_kingside" : "castling_queenside";
+                    // additional_moves: ruch wieży wg rzędu króla
+                    const int row = m.fromRow;
+                    if (isCastleKingSide) {
+                        j["additional_moves"] = json::array({ json{{"from", to_sq(row,7)}, {"to", to_sq(row,5)}, {"piece","rook"}} });
+                    } else {
+                        j["additional_moves"] = json::array({ json{{"from", to_sq(row,0)}, {"to", to_sq(row,3)}, {"piece","rook"}} });
+                    }
+                    j["notation"] = isCastleKingSide ? "0-0" : "0-0-0";
+                } else if (isEnPassant) {
+                    j["special_move"] = "en_passant";
+                }
+
+                // promocja
+                if (m.promotion && std::toupper(static_cast<unsigned char>(m.promotion)) != '?') {
+                    j["special_move"]    = "promotion";
+                    j["promotion_piece"] = promo_name(m.promotion);
+                }
+
+                // SAN (lekki) + sufiksy
+                const bool isMate = (gs == GameState::CHECKMATE);
+                if (!j.contains("notation")) {
+                    j["notation"] = make_san_full(board_before, m,
+                                  isCastle, isCastleKingSide,
+                                  isCapture, isEnPassant,
+                                  gives_check, isMate);
+                }
+
+                // sufiksy check/mate + status gry
+                j["gives_check"] = gives_check;
+                if (gs == GameState::CHECKMATE) {
+                    j["game_status"] = "checkmate";
+                    j["winner"] = whiteMoved ? "white" : "black";
+                } else if (gs == GameState::STALEMATE) {
+                    j["game_status"] = "stalemate";
+                } else {
+                    j["game_status"] = "playing";
+                }
+
+                client.publish(topics::MOVE_CONFIRMED, j);
                 publish_engine_status("ready", "validation done");
                 return;
             }
 
             // =========================================================================
-            // MOVE AI
+            // MOVE AI (szukanie + publikacja ruchu AI)
             // =========================================================================
-            if (topic == topics::AI_THINK_REQ) { // "move/engine/request"
-                std::cout << "[AI] Received AI request: " << payload << std::endl;
-                
-                static std::string lastAiRequest = "";
-                
-                // Deduplication check
-                if (lastAiRequest == payload) {
-                    std::cout << "[AI] Ignoring duplicate AI request\n";
-                    return;
-                }
-                lastAiRequest = payload;
-
-                std::cout << "[AI] Processing new AI request" << std::endl;
+            if (topic == topics::AI_THINK_REQ) {
                 publish_engine_status("thinking", "ai thinking");
 
                 try {
                     auto j = json::parse(payload);
                     if (j.contains("fen") && j["fen"].is_string()) {
                         const auto fen = j["fen"].get<std::string>();
-                        (void)board.loadFEN(fen); // jeśli FEN błędny, po prostu AI nic nie znajdzie
+                        (void)board.loadFEN(fen); // jeżeli FEN zły, AI po prostu nic nie znajdzie
                     }
                 } catch (...) {}
 
+                // zrzut tablicy dla AI
                 char arr[8][8];
-                copy_board_to_array(board, arr);
-                char side = board.activeColor;              // 'w' lub 'b'
-                std::string cast = board.castling;          // "KQkq" / "-"
-                std::string ep   = board.enPassant;         // "e3" / "-"
-
+                for (int r=0;r<8;++r) for (int c=0;c<8;++c) arr[r][c]=board.board[r][c];
+                char side = board.activeColor;              // 'w'/'b'
+                std::string cast = board.castling;          // "KQkq"/"-"
+                std::string ep   = board.enPassant;         // "e3"/"-"
 
                 ChessAI ai;
-                auto res = ai.findBestMove(arr, side, cast, ep, /*maxDepth*/5, /*maxTimeMs*/5000);
+                auto res = ai.findBestMove(arr, side, cast, ep, /*depth*/5, /*timeMs*/5000);
 
-                // Jeśli nie znalazł
+                // brak ruchu?
                 if (res.bestMove.fromRow == 0 && res.bestMove.fromCol == 0 &&
                     res.bestMove.toRow == 0 && res.bestMove.toCol == 0 && res.bestMove.promotion == '?') {
                     publish_engine_status("error", "no legal moves");
                     return;
                 }
 
-                Move exec = res.bestMove; // typ Twojego ruchu
-
-
+                Move exec = res.bestMove;
 
                 if (!board.isMoveValid(exec)) {
                     publish_engine_status("error", "ai produced illegal move");
                     return;
                 }
+
+                // dane „przed” (do klasyfikacji EP/roszady/itd.)
+                const std::string prevEP = board.enPassant;
+                const bool whiteMoved = std::isupper(static_cast<unsigned char>(exec.movedPiece));
+                const bool isPawn     = (std::toupper(static_cast<unsigned char>(exec.movedPiece)) == 'P');
+                const bool targetEmptyBefore = (exec.capturedPiece == 0);
+
+                const bool isCastle = (std::toupper(static_cast<unsigned char>(exec.movedPiece)) == 'K'
+                                       && std::abs(exec.toCol - exec.fromCol) == 2
+                                       && exec.toRow == exec.fromRow);
+                const bool isCastleKingSide = isCastle && (exec.toCol > exec.fromCol);
+                const std::string toAlg = to_sq(exec.toRow, exec.toCol);
+                const bool isEnPassant = (isPawn && exec.fromCol != exec.toCol && targetEmptyBefore
+                                          && !prevEP.empty() && prevEP != "-" && toAlg == prevEP);
+                const bool isCapture = (!targetEmptyBefore) || isEnPassant;
+                Board board_before = board;
+                // wykonaj
                 board.makeMove(exec);
-                const auto fen_after = fen_from_board(board);
+
+                const std::string fen_after = fen_from_board(board);
                 const std::string from = to_sq(exec.fromRow, exec.fromCol);
                 const std::string to   = to_sq(exec.toRow,   exec.toCol);
                 const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
+                const bool gives_check = board.isInCheck();
+                const GameState gs = board.getGameState();
 
-                // 6) Publikacja move/ai
                 json j = {
                     {"from", from},
-                    {"to", to},
-                    {"fen", fen_after},
+                    {"to",   to},
+                    {"fen",  fen_after},
                     {"next_player", next_player}
                 };
-                // jeśli promocja
+
+                if (isCastle) {
+                    j["special_move"] = isCastleKingSide ? "castling_kingside" : "castling_queenside";
+                    const int row = exec.fromRow;
+                    if (isCastleKingSide) {
+                        j["additional_moves"] = json::array({ json{{"from", to_sq(row,7)}, {"to", to_sq(row,5)}, {"piece","rook"}} });
+                    } else {
+                        j["additional_moves"] = json::array({ json{{"from", to_sq(row,0)}, {"to", to_sq(row,3)}, {"piece","rook"}} });
+                    }
+                    j["notation"] = isCastleKingSide ? "0-0" : "0-0-0";
+                } else if (isEnPassant) {
+                    j["special_move"] = "en_passant";
+                }
+
                 if (exec.promotion && std::toupper(static_cast<unsigned char>(exec.promotion)) != '?') {
                     j["special_move"]    = "promotion";
-                    // mapowanie char → słowo
-                    switch (std::toupper(static_cast<unsigned char>(exec.promotion))) {
-                        case 'Q': j["promotion_piece"] = "queen";  break;
-                        case 'R': j["promotion_piece"] = "rook";   break;
-                        case 'B': j["promotion_piece"] = "bishop"; break;
-                        case 'N': j["promotion_piece"] = "knight"; break;
-                    }
+                    j["promotion_piece"] = promo_name(exec.promotion);
                 }
-                std::cout << "[AI] Publishing AI move: " << from << "->" << to << std::endl;
-                client.publish(topics::MOVE_AI, j);
 
+                const bool isMate = (gs == GameState::CHECKMATE);
+                if (!j.contains("notation")) {
+                    j["notation"] = make_san_full(board_before, exec,
+                                  isCastle, isCastleKingSide,
+                                  isCapture, isEnPassant,
+                                  gives_check, isMate);
+                }
+                j["gives_check"] = gives_check;
+                if (gs == GameState::CHECKMATE) {
+                    j["game_status"] = "checkmate";
+                    j["winner"] = whiteMoved ? "white" : "black";
+                } else if (gs == GameState::STALEMATE) {
+                    j["game_status"] = "stalemate";
+                } else {
+                    j["game_status"] = "playing";
+                }
+
+                client.publish(topics::MOVE_AI, j);
                 publish_engine_status("ready", "ai move published");
                 return;
             }
 
-
-
             // =========================================================================
-            // RESTART
+            // RESTART (start / fen)
             // =========================================================================
             if (topic == "control/restart/external") {
-                std::cout << "[RESTART] Received reset request: " << payload << std::endl;
                 try {
                     auto j = json::parse(payload);
                     if (j.contains("fen") && j["fen"].is_string()) {
                         const auto fen = j["fen"].get<std::string>();
-                        std::cout << "[RESTART] Loading FEN: " << fen << std::endl;
                         if (!board.loadFEN(fen)) {
-                            // błąd FEN
-                            std::cout << "[RESTART] Failed to load FEN!" << std::endl;
                             client.publish(topics::STATUS_ENGINE, json{{"status","error"},{"message","bad FEN"}});
                             return;
                         }
-                        std::cout << "[RESTART] FEN loaded successfully" << std::endl;
                     } else {
-                        std::cout << "[RESTART] No FEN provided, using start position" << std::endl;
                         board.startBoard();
                     }
-                    std::cout << "[RESTART] Board reset completed" << std::endl;
-                    
-                    // Wyślij aktualny FEN po resecie
-                    const auto current_fen = fen_from_board(board);
-                    std::cout << "[RESTART] Sending current FEN to backend: " << current_fen << std::endl;
-                    
-                    json reset_confirmation = {
-                        {"type", "reset_confirmed"},
-                        {"fen", current_fen}
-                    };
-                    client.publish("engine/reset/confirmed", reset_confirmation);
-                    
                     client.publish(topics::STATUS_ENGINE, json{{"status","ready"},{"message","board restarted"}});
                 } catch (...) {
-                    std::cout << "[RESTART] Exception occurred, using default start position" << std::endl;
                     board.startBoard();
                     client.publish(topics::STATUS_ENGINE, json{{"status","ready"},{"message","board restarted"}});
                 }
                 return;
-                }
+            }
 
-
-            // Nieznany temat – status ostrzegawczy
+            // Nieznany temat
             publish_engine_status("warning", std::string("unhandled topic: ") + topic);
         }
         catch (const std::exception& e) {
             std::cerr << "[Engine] Failed to handle message on " << topic << ": " << e.what() << "\n";
-            try {
-                publish_engine_status("error", e.what());
-            } catch (...) {}
-        } });
+            try { publish_engine_status("error", e.what()); } catch (...) {}
+        }
+    });
 
     // Subskrypcje wymagane przez backend
-    client.subscribe(topics::POSSIBLE_MOVES_REQ, 1); // engine/possible_moves/request
-    client.subscribe(topics::MOVE_ENGINE_REQ, 1);    // move/engine
-    client.subscribe("control/restart/external", 1); // reset stanu (fen opcjonalny)
-    client.subscribe(topics::AI_THINK_REQ, 1);       // engine/ai/think
+    client.subscribe(topics::POSSIBLE_MOVES_REQ, 1);
+    client.subscribe(topics::MOVE_ENGINE_REQ, 1);
+    client.subscribe("control/restart/external", 1);
+    client.subscribe(topics::AI_THINK_REQ, 1);
 
     std::cout << "Engine MQTT bridge up. Listening… (Ctrl+C to exit)\n";
     client.loop_forever();

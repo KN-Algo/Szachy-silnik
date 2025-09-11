@@ -411,8 +411,29 @@ int main()
 
                 // ewentualna figura promocji z requestu (tylko z MoveEngineReq)
                 char promo = 0;
-                if (req.type == "promotion" && !req.promotion_piece.empty()) {
-                    std::cout << "[Engine] Promotion detected: " << req.promotion_piece << std::endl;
+                if ((req.special_move == "promotion" || req.special_move == "promotion_capture") && !req.promotion_piece.empty()) {
+                    std::cout << "[Engine] Promotion detected: " << req.promotion_piece << " (special_move: " << req.special_move << ")" << std::endl;
+                    
+                    // Walidacja dostępnych figur (fizyczne ograniczenia planszy)
+                    if (!req.available_pieces.empty()) {
+                        bool isAllowed = std::find(req.available_pieces.begin(), req.available_pieces.end(), req.promotion_piece) != req.available_pieces.end();
+                        if (!isAllowed) {
+                            std::cerr << "[Engine] ERROR: Promotion piece " << req.promotion_piece << " not available. Available: ";
+                            for (const auto& piece : req.available_pieces) {
+                                std::cerr << piece << " ";
+                            }
+                            std::cerr << std::endl;
+                            
+                            client.publish(
+                                topics::MOVE_REJECTED,
+                                make_move_rejected(req.from, req.to, fen_before, req.physical, "Promotion piece not available on physical board")
+                            );
+                            publish_engine_status("ready", "validation done");
+                            return;
+                        }
+                        std::cout << "[Engine] Promotion piece " << req.promotion_piece << " validated against available pieces" << std::endl;
+                    }
+                    
                     // "queen"/"rook"/"bishop"/"knight" -> 'Q'/'R'/'B'/'N'
                     char p = std::toupper(static_cast<unsigned char>(req.promotion_piece[0]));
                     // nadaj wielkość litery wg koloru wykonującego ruch
@@ -422,18 +443,7 @@ int main()
                     promo = whiteMove ? p : static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
                 }
 
-
                 Move m{};
-                // jeżeli podano promocję – ustaw literę w odpowiedniej wielkości
-                if (promo) {
-                    const auto [r, c] = to_rc(req.from);
-                    const char movedHere = board.board[r][c];
-                    const bool whiteMove = std::isupper(static_cast<unsigned char>(movedHere));
-                    promo = whiteMove
-                        ? static_cast<char>(std::toupper(static_cast<unsigned char>(promo)))
-                        : static_cast<char>(std::tolower(static_cast<unsigned char>(promo)));
-                }
-
                 if (!fill_move_from_to(board, req.from, req.to, m, promo)) {
                     std::cerr << "[Engine] ERROR: Invalid algebraic squares in move" << std::endl;
                     client.publish(
@@ -512,7 +522,16 @@ int main()
 
                 // promocja
                 if (m.promotion && std::toupper(static_cast<unsigned char>(m.promotion)) != '?') {
-                    j["special_move"]    = "promotion";
+                    // Rozróżnij promocję z biciem od zwykłej promocji
+                    if (isCapture) {
+                        j["special_move"] = "promotion_capture";
+                        // Dodaj informację o zbitej figurze jeśli dostępna
+                        if (!req.captured_piece.empty()) {
+                            j["captured_piece"] = req.captured_piece;
+                        }
+                    } else {
+                        j["special_move"] = "promotion";
+                    }
                     j["promotion_piece"] = promo_name(m.promotion);
                 }
 
@@ -649,7 +668,28 @@ int main()
 
                 // promocja
                 if (exec.promotion && std::toupper(static_cast<unsigned char>(exec.promotion)) != '?') {
-                    j["special_move"]    = "promotion";
+                    // Rozróżnij promocję z biciem od zwykłej promocji
+                    if (isCapture) {
+                        j["special_move"] = "promotion_capture";
+                        // AI może samodzielnie wygenerować zbitą figurę na podstawie planszy
+                        if (!targetEmptyBefore) {
+                            const char captured = exec.capturedPiece;
+                            const std::string capturedName = [captured]() -> std::string {
+                                switch (std::tolower(static_cast<unsigned char>(captured))) {
+                                    case 'p': return "pawn";
+                                    case 'r': return "rook";
+                                    case 'n': return "knight";
+                                    case 'b': return "bishop";
+                                    case 'q': return "queen";
+                                    case 'k': return "king";
+                                    default: return "unknown";
+                                }
+                            }();
+                            j["captured_piece"] = capturedName;
+                        }
+                    } else {
+                        j["special_move"] = "promotion";
+                    }
                     j["promotion_piece"] = promo_name(exec.promotion);
                 }
 

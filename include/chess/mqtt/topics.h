@@ -11,6 +11,7 @@ namespace topics
     inline constexpr const char *MOVE_CONFIRMED = "engine/move/confirmed";
     inline constexpr const char *MOVE_REJECTED = "engine/move/rejected";
     inline constexpr const char *STATUS_ENGINE = "status/engine";
+    inline constexpr const char *RESET_CONFIRMED = "engine/reset/confirmed";
 
     inline constexpr const char *MOVE_AI = "move/ai";              // publikacja ruchu AI
     inline constexpr const char *AI_THINK_REQ = "engine/ai/think"; // *wewnętrzny* trigger do testów/wywołania AI

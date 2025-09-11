@@ -679,132 +679,6 @@ int main()
                 return;
             }
 
-            // // =========================================================================
-            // // RESTART (start / fen)
-            // // =========================================================================
-            // if (topic == topics::AI_THINK_REQ) {
-            //     std::cout << "[AI] Starting AI calculation..." << std::endl;
-            //     publish_engine_status("thinking", "ai thinking");
-
-            //     try {
-            //         auto j = json::parse(payload);
-            //         if (j.contains("fen") && j["fen"].is_string()) {
-            //             const auto fen = j["fen"].get<std::string>();
-            //             std::cout << "[AI] Synchronizing with FEN: " << fen << std::endl;
-            //             (void)board.loadFEN(fen); // jeżeli FEN zły, AI po prostu nic nie znajdzie
-            //         }
-            //     } catch (...) {
-            //         std::cout << "[AI] No FEN provided, using current board position" << std::endl;
-            //     }
-
-            //     // zrzut tablicy dla AI
-            //     char arr[8][8];
-            //     for (int r=0;r<8;++r) for (int c=0;c<8;++c) arr[r][c]=board.board[r][c];
-            //     char side = board.activeColor;              // 'w'/'b'
-            //     std::string cast = board.castling;          // "KQkq"/"-"
-            //     std::string ep   = board.enPassant;         // "e3"/"-"
-
-            //     std::cout << "[AI] Starting search (depth=5, time=5000ms)..." << std::endl;
-            //     ChessAI ai;
-            //     auto res = ai.findBestMove(arr, side, cast, ep, /*depth*/5, /*timeMs*/5000);
-            //     std::cout << "[AI] Search completed" << std::endl;
-
-            //     // brak ruchu?
-            //     if (res.bestMove.fromRow == 0 && res.bestMove.fromCol == 0 &&
-            //         res.bestMove.toRow == 0 && res.bestMove.toCol == 0 && res.bestMove.promotion == '?') {
-            //         std::cerr << "[AI] ERROR: No legal moves found" << std::endl;
-            //         publish_engine_status("error", "no legal moves");
-            //         return;
-            //     }
-
-            //     Move exec = res.bestMove;
-            //     std::cout << "[AI] Best move found: " << to_sq(exec.fromRow, exec.fromCol) 
-            //               << " -> " << to_sq(exec.toRow, exec.toCol) << std::endl;
-
-            //     if (!board.isMoveValid(exec)) {
-            //         std::cerr << "[AI] ERROR: AI produced illegal move!" << std::endl;
-            //         publish_engine_status("error", "ai produced illegal move");
-            //         return;
-            //     }
-
-            //     // dane „przed” (do klasyfikacji EP/roszady/itd.)
-            //     const std::string prevEP = board.enPassant;
-            //     const bool whiteMoved = std::isupper(static_cast<unsigned char>(exec.movedPiece));
-            //     const bool isPawn     = (std::toupper(static_cast<unsigned char>(exec.movedPiece)) == 'P');
-            //     const bool targetEmptyBefore = (exec.capturedPiece == 0);
-
-            //     const bool isCastle = (std::toupper(static_cast<unsigned char>(exec.movedPiece)) == 'K'
-            //                            && std::abs(exec.toCol - exec.fromCol) == 2
-            //                            && exec.toRow == exec.fromRow);
-            //     const bool isCastleKingSide = isCastle && (exec.toCol > exec.fromCol);
-            //     const std::string toAlg = to_sq(exec.toRow, exec.toCol);
-            //     const bool isEnPassant = (isPawn && exec.fromCol != exec.toCol && targetEmptyBefore
-            //                               && !prevEP.empty() && prevEP != "-" && toAlg == prevEP);
-            //     const bool isCapture = (!targetEmptyBefore) || isEnPassant;
-            //     Board board_before = board;
-            //     // wykonaj
-            //     std::cout << "[AI] Executing AI move..." << std::endl;
-            //     board.makeMove(exec);
-
-            //     const std::string fen_after = fen_from_board(board);
-            //     const std::string from = to_sq(exec.fromRow, exec.fromCol);
-            //     const std::string to   = to_sq(exec.toRow,   exec.toCol);
-            //     const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
-            //     const bool gives_check = board.isInCheck();
-            //     const GameState gs = board.getGameState();
-
-            //     std::cout << "[AI] AI move executed: " << from << " -> " << to 
-            //               << ", Next player: " << next_player 
-            //               << ", Check: " << (gives_check ? "YES" : "NO") << std::endl;
-
-            //     json j = {
-            //         {"from", from},
-            //         {"to",   to},
-            //         {"fen",  fen_after},
-            //         {"next_player", next_player}
-            //     };
-
-            //     if (isCastle) {
-            //         j["special_move"] = isCastleKingSide ? "castling_kingside" : "castling_queenside";
-            //         const int row = exec.fromRow;
-            //         if (isCastleKingSide) {
-            //             j["additional_moves"] = json::array({ json{{"from", to_sq(row,7)}, {"to", to_sq(row,5)}, {"piece","rook"}} });
-            //         } else {
-            //             j["additional_moves"] = json::array({ json{{"from", to_sq(row,0)}, {"to", to_sq(row,3)}, {"piece","rook"}} });
-            //         }
-            //         j["notation"] = isCastleKingSide ? "0-0" : "0-0-0";
-            //     } else if (isEnPassant) {
-            //         j["special_move"] = "en_passant";
-            //     }
-
-            //     if (exec.promotion && std::toupper(static_cast<unsigned char>(exec.promotion)) != '?') {
-            //         j["special_move"]    = "promotion";
-            //         j["promotion_piece"] = promo_name(exec.promotion);
-            //     }
-
-            //     const bool isMate = (gs == GameState::CHECKMATE);
-            //     if (!j.contains("notation")) {
-            //         j["notation"] = make_san_full(board_before, exec,
-            //                       isCastle, isCastleKingSide,
-            //                       isCapture, isEnPassant,
-            //                       gives_check, isMate);
-            //     }
-            //     j["gives_check"] = gives_check;
-            //     if (gs == GameState::CHECKMATE) {
-            //         j["game_status"] = "checkmate";
-            //         j["winner"] = whiteMoved ? "white" : "black";
-            //     } else if (gs == GameState::STALEMATE) {
-            //         j["game_status"] = "stalemate";
-            //     } else {
-            //         j["game_status"] = "playing";
-            //     }
-
-            //     client.publish(topics::MOVE_AI, j);
-            //     publish_engine_status("ready", "ai move published");
-            //     std::cout << "[AI] AI move published successfully" << std::endl;
-            //     return;
-            // }
-
             // =========================================================================
             // RESTART (start / fen)
             // =========================================================================
@@ -820,15 +694,32 @@ int main()
                             client.publish(topics::STATUS_ENGINE, json{{"status","error"},{"message","bad FEN"}});
                             return;
                         }
+                        // Publikuj potwierdzenie resetu z FEN
+                        client.publish(topics::RESET_CONFIRMED, json{
+                            {"type", "reset_confirmed"},
+                            {"fen", fen}
+                        });
                     } else {
                         std::cout << "[Engine] Restarting with starting position" << std::endl;
                         board.startBoard();
+                        // Publikuj potwierdzenie resetu z domyślnym FEN
+                        const std::string startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+                        client.publish(topics::RESET_CONFIRMED, json{
+                            {"type", "reset_confirmed"},
+                            {"fen", startFen}
+                        });
                     }
                     client.publish(topics::STATUS_ENGINE, json{{"status","ready"},{"message","board restarted"}});
                     std::cout << "[Engine] Board restart completed" << std::endl;
                 } catch (...) {
                     std::cout << "[Engine] Restart with starting position (parse error)" << std::endl;
                     board.startBoard();
+                    // Publikuj potwierdzenie resetu z domyślnym FEN
+                    const std::string startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+                    client.publish(topics::RESET_CONFIRMED, json{
+                        {"type", "reset_confirmed"},
+                        {"fen", startFen}
+                    });
                     client.publish(topics::STATUS_ENGINE, json{{"status","ready"},{"message","board restarted"}});
                     std::cout << "[Engine] Board restart completed" << std::endl;
                 }

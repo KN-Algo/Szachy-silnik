@@ -109,11 +109,20 @@ static std::vector<std::string> possibleFrom(Board &board, const std::string &fr
 
     // Weź legalne ruchy z silnika (uwzględnia: szachy, roszady, EP, promocje)
     const auto legals = board.getLegalMoves();
+    const char mover = board.board[r0][c0];
+    const bool white = std::isupper(static_cast<unsigned char>(mover));
 
     for (const auto &m : legals)
     {
         if (m.fromRow == r0 && m.fromCol == c0)
         {
+            char target = board.board[m.toRow][m.toCol];
+            if (target && ((std::isupper(static_cast<unsigned char>(target)) != 0) == white))
+                continue; // odfiltruj bicie własnych figur
+
+            // opcjonalnie: dodatkowe sito
+            if (!board.isMoveValid(m)) continue;
+
             moves.push_back(to_sq(m.toRow, m.toCol));
         }
     }
@@ -122,6 +131,7 @@ static std::vector<std::string> possibleFrom(Board &board, const std::string &fr
     moves.erase(std::unique(moves.begin(), moves.end()), moves.end());
     return moves;
 }
+
 
 // Wypełnij Move (pola i ew. promocję)
 static bool fill_move_from_to(Board &board, const std::string &from, const std::string &to, Move &out, char promo = 0)
@@ -364,23 +374,30 @@ int main()
                 auto req = PossibleMovesReq::parse(payload); // { position, fen }
                 std::cout << "[Engine] Request for position: " << req.position << std::endl;
 
-                // Opcjonalna synchronizacja pozycji
                 if (!req.fen.empty()) {
                     std::cout << "[Engine] Synchronizing with FEN: " << req.fen << std::endl;
-                    if (!board.loadFEN(req.fen)) {
-                        std::cerr << "[Engine] ERROR: Invalid FEN in possible_moves request" << std::endl;
-                        publish_engine_status("error", "bad FEN in possible_moves/request");
-                        return;
-                    }
+                }
+                else 
+                {
+                    std::cerr << "[Engine] ERROR: Missing FEN in possible_moves request" << std::endl;
+                    publish_engine_status("error", "missing FEN in possible_moves/request");
+                    return;
+                }
+
+                if (!board.loadFEN(req.fen)) {
+                    std::cerr << "[Engine] ERROR: Invalid FEN in possible_moves request" << std::endl;
+                    publish_engine_status("error", "bad FEN in possible_moves/request");
+                    return;
                 }
 
                 // Zwróć ruchy wyłącznie z generatora silnika
                 auto moves = possibleFrom(board, req.position);
                 std::cout << "[Engine] Found " << moves.size() << " possible moves from " << req.position << std::endl;
 
+                const std::string fen_used = fen_from_board(board);
                 client.publish(
                     topics::POSSIBLE_MOVES_RES,
-                    make_possible_moves_response(req.position, moves)
+                    make_possible_moves_response_ex(req.position, moves, fen_used)
                 );
 
                 publish_engine_status("ready", "moves ready");
@@ -558,6 +575,7 @@ int main()
                 client.publish(topics::MOVE_CONFIRMED, j);
                 publish_engine_status("ready", "validation done");
                 std::cout << "[Engine] Move confirmed and published" << std::endl;
+                publish_engine_status("thinking", "ai thinking");
                 return;
             }
 
@@ -638,7 +656,24 @@ int main()
                 const std::string to   = to_sq(exec.toRow,   exec.toCol);
                 const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
                 const bool gives_check = board.isInCheck();
-                const GameState gs = board.getGameState();
+                // po board.makeMove(exec);
+                const bool in_check = board.isInCheck();
+
+                // policz wyłącznie LEGALNE (przechodzące isMoveValid)
+                int legal_count = 0;
+                for (const auto& mv : board.getLegalMoves()) {
+                    if (board.isMoveValid(mv)) {
+                        ++legal_count;
+                        if (legal_count > 0) break; // wystarczy wiedzieć, że jest jakiś ruch
+                    }
+                }
+
+
+                GameState gs =
+                    (legal_count == 0)
+                      ? (in_check ? GameState::CHECKMATE : GameState::STALEMATE)
+                      : GameState::PLAYING;
+
 
                 std::cout << "[AI] AI move executed: " << from << " -> " << to 
                           << ", Next player: " << next_player 
@@ -707,8 +742,10 @@ int main()
                 if (gs == GameState::CHECKMATE) {
                     j["game_status"] = "checkmate";
                     j["winner"] = whiteMoved ? "white" : "black";
+                    j["game_ended"] = true;
                 } else if (gs == GameState::STALEMATE) {
                     j["game_status"] = "stalemate";
+                    j["game_ended"] = true;
                 } else {
                     j["game_status"] = "playing";
                 }

@@ -5,6 +5,44 @@
 #include <iostream>
 #include <limits>
 
+struct PromoInv { int Q=0, R=0, B=0, N=0; };
+
+static PromoInv countMissingFromStart(const char board[8][8], bool white) {
+    int Q=0,R=0,B=0,N=0;
+    for (int r=0;r<8;++r) for (int c=0;c<8;++c) {
+        char p = board[r][c];
+        if (!p) continue;
+        bool isWhite = std::isupper((unsigned char)p);
+        if (isWhite != white) continue;
+        switch (std::toupper((unsigned char)p)) {
+            case 'Q': Q++; break;
+            case 'R': R++; break;
+            case 'B': B++; break;
+            case 'N': N++; break;
+            default: break;
+        }
+    }
+    PromoInv inv;
+    inv.Q = std::max(0, 1 - Q);
+    inv.R = std::max(0, 2 - R);
+    inv.B = std::max(0, 2 - B);
+    inv.N = std::max(0, 2 - N);
+    return inv;
+}
+
+static bool stockHas(const PromoInv& s, char up) {
+    switch (up) { case 'Q': return s.Q>0; case 'R': return s.R>0; case 'B': return s.B>0; case 'N': return s.N>0; default: return false; }
+}
+static char bestFromStock(const PromoInv& s, bool white) {
+    if (s.Q>0) return white ? 'Q' : 'q';
+    if (s.R>0) return white ? 'R' : 'r';
+    if (s.B>0) return white ? 'B' : 'b';
+    if (s.N>0) return white ? 'N' : 'n';
+    // awaryjnie: zostań przy damie — nie powinno się zdarzyć przy normalnej partii
+    return white ? 'Q' : 'q';
+}
+
+
 ChessAI::ChessAI() : nodesVisited(0) {
     ZobristHash::initialize();
 }
@@ -27,6 +65,31 @@ SearchResult ChessAI::iterativeDeepening(const char board[8][8], char activeColo
     // Generuj wszystkie legalne ruchy
     std::vector<Move> moves = MoveGenerator::generateLegalMoves(board, activeColor, castling, enPassant);
   
+    // OGRANICZENIE PROMOCJI wg „magazynu” zliczonego z planszy (tylko root move)
+    const bool whiteToMove = (activeColor == 'w');
+    PromoInv stock = countMissingFromStart(board, whiteToMove);
+
+    // 1) przefiltruj promocje niedozwolone
+    std::vector<Move> filtered;
+    filtered.reserve(moves.size());
+    for (auto m : moves) {
+        if (m.promotion && std::toupper((unsigned char)m.promotion) != '?') {
+            char up = (char)std::toupper((unsigned char)m.promotion);
+            if (stockHas(stock, up)) {
+                filtered.push_back(m);
+            } else {
+                // podmień na najlepszą dozwoloną
+                char repl = bestFromStock(stock, whiteToMove);
+                m.promotion = repl;
+                filtered.push_back(m);
+            }
+        } else {
+            filtered.push_back(m);
+        }
+    }
+    moves.swap(filtered);
+
+
     // Sprawdź liczbę ruchów
     if (moves.empty()) {
         std::cout << "UWAGA: AI nie znalazł żadnych legalnych ruchów!" << std::endl;

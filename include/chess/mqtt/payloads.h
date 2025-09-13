@@ -75,13 +75,15 @@ inline json make_move_rejected(const std::string &from, const std::string &to, c
     j["reason"] = reason;
     return j;
 }
-inline json make_possible_moves_response(const std::string &position, const std::vector<std::string> &moves)
+inline json make_possible_moves_response_ex(const std::string& position, const std::vector<std::string>& moves,const std::string& fen_used) 
 {
     json j;
-    j["position"] = position;
-    j["moves"] = moves;
+    j["position"]=position; 
+    j["moves"]=moves; 
+    j["fen_used"]=fen_used; 
     return j;
 }
+
 
 struct AdditionalMove
 {

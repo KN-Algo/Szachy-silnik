@@ -22,6 +22,9 @@ using namespace notation;
 using mqttwrap::Client;
 using mqttwrap::MqttConfig;
 
+const int DEFAULT_AI_DEPTH   = 5;     // głębokość przeszukiwania
+const int DEFAULT_AI_TIME_MS = 5000;  // limit czasu w ms
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ENV z defaultem
 static std::string env_or(const char *key, const std::string &def)
@@ -610,7 +613,8 @@ int main()
 
                 std::cout << "[AI] Starting search (depth=5, time=5000ms)..." << std::endl;
                 ChessAI ai;
-                auto res = ai.findBestMove(arr, side, cast, ep, /*depth*/5, /*timeMs*/5000);
+                auto res = ai.findBestMove(arr, side, cast, ep, DEFAULT_AI_DEPTH, DEFAULT_AI_TIME_MS);
+
                 std::cout << "[AI] Search completed" << std::endl;
 
                 // brak ruchu?

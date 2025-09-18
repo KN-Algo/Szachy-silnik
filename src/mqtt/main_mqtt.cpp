@@ -323,6 +323,16 @@ static const char *promo_name(char p)
     }
 }
 
+static bool promo_char_from_name(std::string s, char& out) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
+    if      (s == "queen")  { out = 'Q'; return true; }
+    else if (s == "rook")   { out = 'R'; return true; }
+    else if (s == "bishop") { out = 'B'; return true; }
+    else if (s == "knight") { out = 'N'; return true; }
+    return false;
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 int main()
@@ -454,13 +464,17 @@ int main()
                         std::cout << "[Engine] Promotion piece " << req.promotion_piece << " validated against available pieces" << std::endl;
                     }
                     
-                    // "queen"/"rook"/"bishop"/"knight" -> 'Q'/'R'/'B'/'N'
-                    char p = std::toupper(static_cast<unsigned char>(req.promotion_piece[0]));
-                    // nadaj wielkość litery wg koloru wykonującego ruch
+                    char p;
+                    if (!promo_char_from_name(req.promotion_piece, p)) {
+                        client.publish(topics::MOVE_REJECTED,
+                            make_move_rejected(req.from, req.to, fen_before, req.physical, "Unknown promotion_piece"));
+                        publish_engine_status("ready", "validation done");
+                        return;
+                    }
                     const auto [r_from, c_from] = to_rc(req.from);
-                    const char movedHere = board.board[r_from][c_from];
-                    const bool whiteMove = std::isupper(static_cast<unsigned char>(movedHere));
+                    const bool whiteMove = std::isupper(static_cast<unsigned char>(board.board[r_from][c_from]));
                     promo = whiteMove ? p : static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
+
                 }
 
                 Move m{};

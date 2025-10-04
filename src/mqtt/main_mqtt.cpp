@@ -10,12 +10,14 @@
 #include "chess/mqtt/mqtt_client.h"
 #include "chess/mqtt/topics.h"
 #include "chess/mqtt/payloads.h"
+#include "chess/mqtt/logging.h"
 
 #include "chess/board/Board.h"
 #include "chess/model/Move.h"
 #include "chess/game/GameState.h"
 #include "chess/utils/Notation.h" // coordToAlg / algToCoord
 #include "chess/ai/ChessAI.h"
+
 
 using json = nlohmann::json;
 using namespace notation;
@@ -351,13 +353,15 @@ int main()
     cfg.client_id = env_or("MQTT_CLIENT_ID", "chess-engine");
     cfg.qos = 1;
 
-    std::cout << "[MQTT] Connecting to " << cfg.host << ":" << cfg.port
-              << " with client_id: " << cfg.client_id << std::endl;
+   
 
     Client client(cfg);
     if (!client.connect())
     {
-        std::cerr << "[MQTT] Connection failed to " << cfg.host << ":" << cfg.port << std::endl;
+        LOG_E("[MQTT] Connection failed | host=" 
+              << cfg.host << " port=" << cfg.port 
+              << " client_id=" << cfg.client_id << "\n");
+
         return 1;
     }
 
@@ -369,13 +373,30 @@ int main()
         if (!msg.empty())
             j["message"] = msg;
         client.publish(topics::STATUS_ENGINE, j);
+        LOG_D("[STATUS] Published engine status: " << j.dump());
+        if (!client.publish(topics::STATUS_ENGINE, j)) {
+        LOG_E("[STATUS] Failed to publish engine status to topic=" << topics::STATUS_ENGINE);
+}
+
     };
+
+    auto section_tag = [](const std::string& topic) -> const char* {
+        if (topic == topics::POSSIBLE_MOVES_REQ)   return "POSSIBLE_MOVES";
+        if (topic == topics::MOVE_ENGINE_REQ)      return "MOVE_ENGINE";
+        if (topic == topics::MOVE_ENGINE_AI_REQ)   return "MOVE_AI";
+        if (topic == "control/restart/external")   return "RESTART";
+        return "UNHANDLED";
+    };
+
 
     client.set_message_handler([&](const std::string &topic, const std::string &payload)
                                {
         std::cout << "[MQTT] Received message on topic: " << topic << std::endl;
         std::cout << "[MQTT] Payload: " << payload << std::endl;
-        
+        LOG_D("[RECV] topic=" << topic 
+              << " | payload.len=" << payload.size()
+              << " | preview=\"" << preview(payload, 150) << "\"");
+
         try {
             // =========================================================================
             // POSSIBLE MOVES
@@ -392,13 +413,16 @@ int main()
                 }
                 else 
                 {
-                    std::cerr << "[Engine] ERROR: Missing FEN in possible_moves request" << std::endl;
+                    LOG_E("[ENGINE][POSSIBLE_MOVES][Missing FEN in possible_moves request] Missing FEN | topic=" << topic
+                          << " | payload.len=" << payload.size()
+                          << " | preview=\"" << preview(payload, 150) << "\"");
                     publish_engine_status("error", "missing FEN in possible_moves/request");
                     return;
                 }
 
                 if (!board.loadFEN(req.fen)) {
-                    std::cerr << "[Engine] ERROR: Invalid FEN in possible_moves request" << std::endl;
+                    LOG_E("[ENGINE][POSSIBLE_MOVES][Invalid FEN in possible_moves request] Invalid FEN=\"" << req.fen << "\"");
+
                     publish_engine_status("error", "bad FEN in possible_moves/request");
                     return;
                 }
@@ -432,7 +456,8 @@ int main()
                 if (!req.current_fen.empty()) {
                     std::cout << "[Engine] Synchronizing with FEN: " << req.current_fen << std::endl;
                     if (!board.loadFEN(req.current_fen)) {
-                        std::cerr << "[Engine] ERROR: Invalid current_fen" << std::endl;
+                        LOG_E("[ENGINE][MOVE_ENGINE][Invalid current_fen] Bad fen=\"" << req.current_fen << "\"");
+
                         publish_engine_status("error", "bad current_fen");
                         return;
                     }
@@ -448,7 +473,12 @@ int main()
                     if (!req.available_pieces.empty()) {
                         bool isAllowed = std::find(req.available_pieces.begin(), req.available_pieces.end(), req.promotion_piece) != req.available_pieces.end();
                         if (!isAllowed) {
-                            std::cerr << "[Engine] ERROR: Promotion piece " << req.promotion_piece << " not available. Available: ";
+                            LOG_E("[ENGINE][MOVE_ENGINE][Promotion piece unavailable] | "
+                                  << "requested=\"" << req.promotion_piece << "\" "
+                                  << "available=" << json(req.available_pieces).dump()
+                                  << " | from=" << req.from << " to=" << req.to
+                                  << " | fen_before=\"" << fen_before << "\"");
+
                             for (const auto& piece : req.available_pieces) {
                                 std::cerr << piece << " ";
                             }
@@ -479,7 +509,12 @@ int main()
 
                 Move m{};
                 if (!fill_move_from_to(board, req.from, req.to, m, promo)) {
-                    std::cerr << "[Engine] ERROR: Invalid algebraic squares in move" << std::endl;
+                    LOG_E("[ENGINE][MOVE_ENGINE][Invalid algebraic squares in move] | "
+                          << "from=" << req.from << " to=" << req.to
+                          << " | fen_before=\"" << fen_before << "\""
+                          << " | payload.len=" << payload.size()
+                          << " | preview=\"" << preview(payload, 120) << "\"");
+
                     client.publish(
                         topics::MOVE_REJECTED,
                         make_move_rejected(req.from, req.to, fen_before, req.physical, "Bad algebraic square")
@@ -492,7 +527,9 @@ int main()
                 const bool legal = board.isMoveValid(m);
                 std::cout << "[Engine] Move validation result: " << (legal ? "LEGAL" : "ILLEGAL") << std::endl;
                 if (!legal) {
-                    std::cerr << "[Engine] Move rejected: " << req.from << " -> " << req.to << " (illegal)" << std::endl;
+                    LOG_E("[ENGINE][MOVE_ENGINE][Move rejected] Illegal move from=" << req.from << " to=" << req.to
+                          << " | fen_before=" << fen_before);
+
                     client.publish(
                         topics::MOVE_REJECTED,
                         make_move_rejected(req.from, req.to, fen_before, req.physical, "Illegal move")
@@ -527,8 +564,26 @@ int main()
                 // ── Po ruchu: stan, FEN, „kto następny”, check/checkmate
                 const std::string fen_after = fen_from_board(board);
                 const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
-                const bool gives_check = board.isInCheck(); // strona na posunięciu jest w szachu? (czyli ruch dał szacha) :contentReference[oaicite:2]{index=2}
-                const GameState gs = board.getGameState();  // CHECKMATE/STALEMATE/PLAYING itd. :contentReference[oaicite:3]{index=3}
+
+                bool in_check = board.isInCheck();
+                int legal_count = 0;
+                for (const auto& mv : board.getLegalMoves()) {
+                    if (board.isMoveValid(mv)) { ++legal_count; if (legal_count > 0) break; }
+                }
+                GameState gs_old = (legal_count == 0)
+                    ? (in_check ? GameState::CHECKMATE : GameState::STALEMATE)
+                    : GameState::PLAYING;
+
+                // --- NOWE: pełny stan (używamy TYLKO dla remisów) ---
+                GameState gs_full = board.getGameState();
+                GameState gs = gs_old;
+                if (gs_full == GameState::DRAW_50_MOVES ||
+                    gs_full == GameState::DRAW_REPETITION ||
+                    gs_full == GameState::DRAW_INSUFFICIENT_MATERIAL) {
+                    gs = gs_full;   // domykamy remisy (KK, 50, threefold)
+                }
+
+                bool gives_check = board.isInCheck();
 
                 // ── Notation/Special/Additional
                 json j = {
@@ -536,7 +591,8 @@ int main()
                     {"to",   req.to},
                     {"fen",  fen_after},
                     {"next_player", next_player},
-                    {"physical", req.physical}
+                    {"physical", req.physical},
+                    {"gives_check", gives_check}
                 };
 
                 // special_move + dodatkowy ruch wieży przy roszadzie
@@ -578,16 +634,33 @@ int main()
                                   gives_check, isMate);
                 }
 
-                // sufiksy check/mate + status gry
                 j["gives_check"] = gives_check;
-                if (gs == GameState::CHECKMATE) {
-                    j["game_status"] = "checkmate";
-                    j["winner"] = whiteMoved ? "white" : "black";
-                } else if (gs == GameState::STALEMATE) {
-                    j["game_status"] = "stalemate";
-                } else {
-                    j["game_status"] = "playing";
+
+                switch (gs) {
+                    case GameState::CHECKMATE:
+                        j["game_status"] = "checkmate";
+                        j["winner"] = whiteMoved ? "white" : "black";
+                        j["game_ended"] = true;
+                        break;
+
+                    // wszystko, co jest remisem (w tym pat), mapujemy na "draw"
+                    case GameState::STALEMATE:
+                    case GameState::DRAW_50_MOVES:
+                    case GameState::DRAW_REPETITION:
+                    case GameState::DRAW_INSUFFICIENT_MATERIAL:
+                        j["game_status"] = "draw";
+                        j["game_ended"] = true;
+                        // opcjonalnie: j["draw_reason"] = "stalemate" / "50move" / "threefold" / "insufficient";
+                        break;
+
+                    default:
+                        j["game_status"] = "playing";
+                        // upewnij się, że NIE zostaje stary "winner" z poprzedniej pozycji
+                        j.erase("winner");
+                        break;
                 }
+
+
 
                 client.publish(topics::MOVE_CONFIRMED, j);
                 publish_engine_status("ready", "validation done");
@@ -610,6 +683,7 @@ int main()
                         std::cout << "[AI] Synchronizing with FEN: " << fen << std::endl;
                         if (!board.loadFEN(fen)) {
                             std::cerr << "[AI] ERROR: Invalid FEN in AI request" << std::endl;
+                            LOG_E("[AI][" << __func__ << "] Bad FEN=\"" << fen << "\" | payload.preview=\"" << preview(payload, 150) << "\"");
                             publish_engine_status("error", "bad FEN in AI request");
                             return;
                         }
@@ -634,7 +708,8 @@ int main()
                 // brak ruchu?
                 if (res.bestMove.fromRow == 0 && res.bestMove.fromCol == 0 &&
                     res.bestMove.toRow == 0 && res.bestMove.toCol == 0 && res.bestMove.promotion == '?') {
-                    std::cerr << "[AI] ERROR: No legal moves found" << std::endl;
+                    LOG_E("[AI][MOVE_AI][ No legal moves found]  fen=\"" << fen_from_board(board) << "\"");
+
                     publish_engine_status("error", "no legal moves");
                     return;
                 }
@@ -643,8 +718,13 @@ int main()
                 std::cout << "[AI] Best move found: " << to_sq(exec.fromRow, exec.fromCol) 
                           << " -> " << to_sq(exec.toRow, exec.toCol) << std::endl;
 
+                Board board_before = board;
+
                 if (!board.isMoveValid(exec)) {
-                    std::cerr << "[AI] ERROR: AI produced illegal move!" << std::endl;
+                    LOG_E("[AI][MOVE_AI][AI produced illegal move!] Illegal move from=" << to_sq(exec.fromRow, exec.fromCol)
+                          << " to=" << to_sq(exec.toRow, exec.toCol)
+                          << " | fen_before=\"" << fen_from_board(board_before) << "\"");
+
                     publish_engine_status("error", "ai produced illegal move");
                     return;
                 }
@@ -663,7 +743,7 @@ int main()
                 const bool isEnPassant = (isPawn && exec.fromCol != exec.toCol && targetEmptyBefore
                                           && !prevEP.empty() && prevEP != "-" && toAlg == prevEP);
                 const bool isCapture = (!targetEmptyBefore) || isEnPassant;
-                Board board_before = board;
+                
                 
                 // wykonaj
                 std::cout << "[AI] Executing AI move..." << std::endl;
@@ -673,24 +753,27 @@ int main()
                 const std::string from = to_sq(exec.fromRow, exec.fromCol);
                 const std::string to   = to_sq(exec.toRow,   exec.toCol);
                 const std::string next_player = (board.activeColor == 'w') ? "white" : "black";
-                const bool gives_check = board.isInCheck();
+                
                 // po board.makeMove(exec);
-                const bool in_check = board.isInCheck();
-
-                // policz wyłącznie LEGALNE (przechodzące isMoveValid)
+                bool in_check = board.isInCheck();
                 int legal_count = 0;
                 for (const auto& mv : board.getLegalMoves()) {
-                    if (board.isMoveValid(mv)) {
-                        ++legal_count;
-                        if (legal_count > 0) break; // wystarczy wiedzieć, że jest jakiś ruch
-                    }
+                    if (board.isMoveValid(mv)) { ++legal_count; if (legal_count > 0) break; }
+                }
+                GameState gs_old = (legal_count == 0)
+                    ? (in_check ? GameState::CHECKMATE : GameState::STALEMATE)
+                    : GameState::PLAYING;
+
+                // --- NOWE: pełny stan (używamy TYLKO dla remisów) ---
+                GameState gs_full = board.getGameState();
+                GameState gs = gs_old;
+                if (gs_full == GameState::DRAW_50_MOVES ||
+                    gs_full == GameState::DRAW_REPETITION ||
+                    gs_full == GameState::DRAW_INSUFFICIENT_MATERIAL) {
+                    gs = gs_full;   // domykamy remisy (KK, 50, threefold)
                 }
 
-
-                GameState gs =
-                    (legal_count == 0)
-                      ? (in_check ? GameState::CHECKMATE : GameState::STALEMATE)
-                      : GameState::PLAYING;
+                bool gives_check = board.isInCheck();
 
 
                 std::cout << "[AI] AI move executed: " << from << " -> " << to 
@@ -701,7 +784,8 @@ int main()
                     {"from", from},
                     {"to", to},
                     {"fen", fen_after},
-                    {"next_player", next_player}
+                    {"next_player", next_player},
+                    {"gives_check", gives_check}
                 };
 
                 // special_move + dodatkowy ruch wieży przy roszadzie
@@ -755,18 +839,32 @@ int main()
                                   gives_check, isMate);
                 }
 
-                // sufiksy check/mate + status gry
-                j["gives_check"] = gives_check;
-                if (gs == GameState::CHECKMATE) {
-                    j["game_status"] = "checkmate";
-                    j["winner"] = whiteMoved ? "white" : "black";
-                    j["game_ended"] = true;
-                } else if (gs == GameState::STALEMATE) {
-                    j["game_status"] = "stalemate";
-                    j["game_ended"] = true;
-                } else {
-                    j["game_status"] = "playing";
+                
+
+                switch (gs) {
+                    case GameState::CHECKMATE:
+                        j["game_status"] = "checkmate";
+                        j["winner"] = whiteMoved ? "white" : "black";
+                        j["game_ended"] = true;
+                        break;
+
+                    // wszystko, co jest remisem (w tym pat), mapujemy na "draw"
+                    case GameState::STALEMATE:
+                    case GameState::DRAW_50_MOVES:
+                    case GameState::DRAW_REPETITION:
+                    case GameState::DRAW_INSUFFICIENT_MATERIAL:
+                        j["game_status"] = "draw";
+                        j["game_ended"] = true;
+                        // opcjonalnie: j["draw_reason"] = "stalemate" / "50move" / "threefold" / "insufficient";
+                        break;
+
+                    default:
+                        j["game_status"] = "playing";
+                        // upewnij się, że NIE zostaje stary "winner" z poprzedniej pozycji
+                        j.erase("winner");
+                        break;
                 }
+
 
                 client.publish(topics::MOVE_AI, j);
                 publish_engine_status("ready", "ai move published");
@@ -785,7 +883,8 @@ int main()
                         const auto fen = j["fen"].get<std::string>();
                         std::cout << "[Engine] Restarting with custom FEN: " << fen << std::endl;
                         if (!board.loadFEN(fen)) {
-                            std::cerr << "[Engine] ERROR: Invalid FEN in restart request" << std::endl;
+                            LOG_E("[ENGINE][RESTART][Invalid FEN in restart request] Bad FEN=\"" << fen << "\" | payload.preview=\"" << preview(payload, 150) << "\"");
+
                             client.publish(topics::STATUS_ENGINE, json{{"status","error"},{"message","bad FEN"}});
                             return;
                         }
@@ -828,8 +927,25 @@ int main()
         catch (const std::exception& e) {
             std::cerr << "[Engine] EXCEPTION: Failed to handle message on " << topic 
                       << ": " << e.what() << std::endl;
+
+            const char* TAG = section_tag(topic);
+            LOG_E(std::string("[") + TAG + "][" + __func__ + "] Exception | "
+                  + "topic=" + topic
+                  + " | what=" + e.what()
+                  + " | payload.len=" + std::to_string(payload.size())
+                  + " | preview=\"" + preview(payload, 200) + "\"");
+
             try { publish_engine_status("error", e.what()); } catch (...) {}
-        } });
+        }
+        catch (...) {
+            const char* TAG = section_tag(topic);
+            LOG_E(std::string("[") + TAG + "][" + __func__ + "] Unknown exception | "
+                  + "topic=" + topic
+                  + " | payload.len=" + std::to_string(payload.size())
+                  + " | preview=\"" + preview(payload, 200) + "\"");
+            try { publish_engine_status("error", "unknown exception"); } catch (...) {}
+        }
+         });
 
     // Subskrypcje wymagane przez backend
     std::cout << "[MQTT] Subscribing to topics..." << std::endl;
@@ -838,6 +954,7 @@ int main()
 
     client.subscribe(topics::MOVE_ENGINE_REQ, 1);
     std::cout << "[MQTT] Subscribed to: " << topics::MOVE_ENGINE_REQ << std::endl;
+
 
     client.subscribe(topics::MOVE_ENGINE_AI_REQ, 1);
     std::cout << "[MQTT] Subscribed to: " << topics::MOVE_ENGINE_AI_REQ << std::endl;
@@ -848,6 +965,8 @@ int main()
     std::cout << "[Engine] Chess engine MQTT bridge is ready and listening..." << std::endl;
     std::cout << "[Engine] Press Ctrl+C to exit" << std::endl;
     client.loop_forever();
+    LOG_I("[ENGINE] Entering main MQTT loop (blocking mode)");
+
 
     std::cout << "[Engine] Shutting down..." << std::endl;
     return 0;

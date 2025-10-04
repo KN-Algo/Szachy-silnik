@@ -5,8 +5,17 @@
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 
+/**
+ * ZbiÛr struktur i helperÛw opisujπcych formaty wiadomoúci MQTT
+ * wymienianych miÍdzy backendem Symfony a silnikiem szachowym.
+ * Kaødy typ øπdania/odpowiedzi ma odpowiadajπcπ strukturÍ C++ i metodÍ JSON parse/serialize.
+ */
+
+ // --- STATUS / HEALTH --------------------------------------------------------
+
 inline json make_status(const std::string &status, const std::string &message = "")
 {
+    // Generuje prosty komunikat statusu silnika (np. "ready", "thinking", "error")
     json j;
     j["status"] = status;
     if (!message.empty())
@@ -14,14 +23,19 @@ inline json make_status(const std::string &status, const std::string &message = 
     return j;
 }
 
+// --- Ø•DANIE WALIDACJI RUCHU -----------------------------------------------
+
 struct MoveEngineReq
 {
+    // Pola opisujπce ruch przekazany z backendu do silnika
     std::string from, to, current_fen, type;
     bool physical;
     std::string promotion_piece;
     std::vector<std::string> available_pieces;
     std::string captured_piece;
     std::string special_move;
+
+    // Parser JSON -> MoveEngineReq
 
     static MoveEngineReq parse(const std::string &s)
     {
@@ -36,7 +50,7 @@ struct MoveEngineReq
         r.captured_piece = j.value("captured_piece", "");
         r.special_move = j.value("special_move", "");
 
-        // Parsowanie available_pieces jako array
+        // Obs≥uga tablicy dostÍpnych bierek do promocji
         if (j.contains("available_pieces") && j["available_pieces"].is_array())
         {
             for (const auto &piece : j["available_pieces"])
@@ -52,11 +66,16 @@ struct MoveEngineReq
     }
 };
 
+// --- Ø•DANIE LISTY MOØLIWYCH RUCH”W ----------------------------------------
+
+
 struct PossibleMovesReq
 {
     std::string position, fen;
     static PossibleMovesReq parse(const std::string &s)
     {
+        // Parser JSON -> PossibleMovesReq
+
         auto j = json::parse(s);
         PossibleMovesReq r;
         r.position = j.at("position");
@@ -65,8 +84,12 @@ struct PossibleMovesReq
     }
 };
 
+// --- ODPOWIEDè: RUCH ODRZUCONY ---------------------------------------------
+
 inline json make_move_rejected(const std::string &from, const std::string &to, const std::string &fen_before, bool physical, const std::string &reason)
 {
+    // Zwraca komunikat o b≥Ídnym lub nielegalnym ruchu
+
     json j;
     j["from"] = from;
     j["to"] = to;
@@ -75,8 +98,13 @@ inline json make_move_rejected(const std::string &from, const std::string &to, c
     j["reason"] = reason;
     return j;
 }
+
+// --- ODPOWIEDè: MOØLIWE RUCHY (rozszerzona) -------------------------------
+
 inline json make_possible_moves_response_ex(const std::string& position, const std::vector<std::string>& moves,const std::string& fen_used) 
 {
+    // Zwraca listÍ moøliwych ruchÛw dla danego pola, wraz z FEN uøytym do analizy
+
     json j;
     j["position"]=position; 
     j["moves"]=moves; 
@@ -84,11 +112,14 @@ inline json make_possible_moves_response_ex(const std::string& position, const s
     return j;
 }
 
+// --- DODATKOWE RUCHY (np. roszada, bicie w przelocie) ----------------------
 
 struct AdditionalMove
 {
     std::string from, to, piece;
 };
+
+// --- ODPOWIEDè: RUCH ZAAKCEPTOWANY -----------------------------------------
 
 inline json make_move_confirmed(
     const std::string &from, const std::string &to, const std::string &fen_after,
@@ -101,6 +132,10 @@ inline json make_move_confirmed(
     const std::optional<std::string> &game_status = std::nullopt,
     const std::optional<std::string> &winner = std::nullopt)
 {
+    /**
+     * Buduje JSON odpowiedzi Ñmove confirmedî po poprawnym wykonaniu ruchu.
+     * Zawiera zaktualizowany FEN, ewentualne ruchy dodatkowe oraz metadane gry.
+     */
     json j;
     j["from"] = from;
     j["to"] = to;
@@ -110,6 +145,8 @@ inline json make_move_confirmed(
 
     if (special_move)
         j["special_move"] = *special_move;
+
+    // Dodatkowe ruchy np. roszada, bicie w przelocie
     if (!additional_moves.empty())
     {
         j["additional_moves"] = json::array();

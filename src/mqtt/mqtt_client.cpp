@@ -10,6 +10,8 @@ using namespace std::chrono_literals;
 
 namespace mqttwrap
 {
+    // Implementacja klienta MQTT z wykorzystaniem biblioteki Paho
+    // Obs³uguje po³¹czenie, subskrypcje i publikacjê wiadomoœci JSON
 
     struct Client::Impl : public virtual mqtt::callback, public virtual mqtt::iaction_listener
     {
@@ -22,10 +24,12 @@ namespace mqttwrap
 
         Impl(const MqttConfig &c) : cfg(c)
         {
+            // Konfiguracja i utworzenie klienta MQTT
             std::string server = "tcp://" + cfg.host + ":" + std::to_string(cfg.port);
             cli = std::make_unique<mqtt::async_client>(server, cfg.client_id);
             cli->set_callback(*this);
 
+            // Ustawienie parametrów po³¹czenia (login, has³o, sesja)
             mqtt::connect_options_builder bob;
             bob.clean_session(cfg.clean_session);
             if (!cfg.username.empty())
@@ -34,6 +38,9 @@ namespace mqttwrap
                 bob.password(cfg.password);
             connOpts = bob.finalize();
         }
+
+                // --- CALLBACKS MQTT --------------------------------------------------
+
 
         void connected(const std::string &cause) override
         {
@@ -46,6 +53,8 @@ namespace mqttwrap
 
         void connection_lost(const std::string &cause) override
         {
+            // Wywo³ywane po utracie po³¹czenia z brokerem
+
             is_connected_ = false;
             if (cause.empty()) {
                 LOG_E("[MQTT] connection lost (no cause provided)");
@@ -56,12 +65,15 @@ namespace mqttwrap
 
         void message_arrived(mqtt::const_message_ptr msg) override
         {
+            // Odbiór wiadomoœci z subskrybowanego tematu
             std::string topic = msg->get_topic();
             std::string payload = msg->to_string();
             LOG_D("[MQTT] arrived topic=\"" << topic << "\" qos=" << msg->get_qos()
                 << " retained=" << yesno(msg->is_retained())
                 << " payload.len=" << payload.size()
                 << " payload.preview=\"" << preview(payload) << "\"");
+
+            // Przekazanie dalej do zarejestrowanego handlera u¿ytkownika
             std::lock_guard<std::mutex> lk(mtx);
             if (on_msg)
                 on_msg(topic, payload);
@@ -69,6 +81,7 @@ namespace mqttwrap
 
         void delivery_complete(mqtt::delivery_token_ptr) override {}
 
+        // Callbacki potwierdzaj¹ce sukces/pora¿kê akcji (np. publish)
         void on_success(const mqtt::token &tok) override {
             try {
                 LOG_D("[MQTT] action success token=" << tok.get_message_id());
@@ -88,11 +101,15 @@ namespace mqttwrap
 
     };
 
+        // --- PUBLICZNY INTERFEJS KLIENTA ----------------------------------------
+
+
     Client::Client(const MqttConfig &cfg) : impl(new Impl(cfg)) {}
     Client::~Client() { delete impl; }
 
     bool Client::connect()
     {
+         // Próba po³¹czenia z brokerem MQTT
         try
         {
             LOG_I("[MQTT] connecting to " << impl->cfg.host << ":" << impl->cfg.port
@@ -111,6 +128,7 @@ namespace mqttwrap
 
     void Client::disconnect()
 {
+    // Bezpieczne roz³¹czenie z brokerem
     try
     {
         LOG_I("[MQTT] disconnecting...");
@@ -132,13 +150,14 @@ namespace mqttwrap
 
     void Client::loop_forever()
     {
-        // Paho C++ async client doesn't need a manual loop; we can just sleep
+        // Klient asynchroniczny nie wymaga aktywnej pêtli – utrzymujemy proces
         while (true)
             std::this_thread::sleep_for(200ms);
     }
 
     bool Client::publish(const std::string &topic, const json &payload)
     {
+        // Publikacja wiadomoœci JSON na wskazany temat
         try {
         const std::string dumped = payload.dump();
         LOG_D("[MQTT] publish topic=\"" << topic << "\" qos=" << impl->cfg.qos
@@ -158,6 +177,7 @@ namespace mqttwrap
 
     bool Client::subscribe(const std::string &topic, int qos)
     {
+        // Subskrypcja wybranego tematu MQTT (np. move/engine)
          try {
             LOG_I("[MQTT] subscribe topic=\"" << topic << "\" qos=" << qos);
             impl->cli->subscribe(topic, qos)->wait();
@@ -171,6 +191,7 @@ namespace mqttwrap
 
     void Client::set_message_handler(MsgHandler handler)
     {
+        // Rejestracja funkcji wywo³ywanej przy nadejœciu wiadomoœci
         std::lock_guard<std::mutex> lk(impl->mtx);
         impl->on_msg = std::move(handler);
     }

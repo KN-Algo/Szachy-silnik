@@ -6,16 +6,25 @@
 using nlohmann::json;
 
 /**
- * ZbiÛr struktur i helperÛw opisujπcych formaty wiadomoúci MQTT
+ * @file payloads.h
+ * @brief Definicje struktur i funkcji pomocniczych (helperÛw) opisujπcych formaty wiadomoúci MQTT
  * wymienianych miÍdzy backendem Symfony a silnikiem szachowym.
- * Kaødy typ øπdania/odpowiedzi ma odpowiadajπcπ strukturÍ C++ i metodÍ JSON parse/serialize.
+ *
+ * Kaødy typ øπdania lub odpowiedzi ma odpowiadajπcπ strukturÍ C++ oraz metody
+ * konwersji JSON (parse/serialize).
  */
 
- // --- STATUS / HEALTH --------------------------------------------------------
+// --- STATUS / HEALTH --------------------------------------------------------
 
+/**
+ * @brief Tworzy prosty komunikat statusowy silnika.
+ *
+ * @param status Aktualny status (np. "ready", "thinking", "error").
+ * @param message (opcjonalny) Dodatkowa wiadomoúÊ opisowa.
+ * @return json Obiekt JSON zawierajπcy pola `status` oraz opcjonalnie `message`.
+ */
 inline json make_status(const std::string &status, const std::string &message = "")
 {
-    // Generuje prosty komunikat statusu silnika (np. "ready", "thinking", "error")
     json j;
     j["status"] = status;
     if (!message.empty())
@@ -25,18 +34,30 @@ inline json make_status(const std::string &status, const std::string &message = 
 
 // --- Ø•DANIE WALIDACJI RUCHU -----------------------------------------------
 
+/**
+ * @brief Struktura reprezentujπca øπdanie walidacji ruchu przekazywane z backendu do silnika.
+ *
+ * Zawiera wszystkie informacje potrzebne do sprawdzenia poprawnoúci ruchu, w tym
+ * pola, bieøπcy FEN oraz dane dotyczπce promocji.
+ */
 struct MoveEngineReq
 {
-    // Pola opisujπce ruch przekazany z backendu do silnika
-    std::string from, to, current_fen, type;
-    bool physical;
-    std::string promotion_piece;
-    std::vector<std::string> available_pieces;
-    std::string captured_piece;
-    std::string special_move;
+    std::string from;                     ///< Pole poczπtkowe w notacji algebraicznej (np. "e2").
+    std::string to;                       ///< Pole docelowe w notacji algebraicznej (np. "e4").
+    std::string current_fen;              ///< Aktualny stan gry w formacie FEN.
+    std::string type;                     ///< Typ ruchu (np. "normal", "promotion").
+    bool physical;                        ///< Czy ruch pochodzi z fizycznej planszy.
+    std::string promotion_piece;          ///< Nazwa figury uøytej do promocji (np. "queen").
+    std::vector<std::string> available_pieces; ///< Lista figur dostÍpnych do promocji na fizycznej planszy.
+    std::string captured_piece;           ///< Nazwa zbitej figury (jeúli dotyczy).
+    std::string special_move;             ///< Typ specjalnego ruchu (np. "castling_kingside", "en_passant").
 
-    // Parser JSON -> MoveEngineReq
-
+    /**
+     * @brief Konwertuje obiekt JSON na strukturÍ MoveEngineReq.
+     *
+     * @param s Ciπg JSON reprezentujπcy øπdanie.
+     * @return MoveEngineReq Zdeserializowana struktura øπdania ruchu.
+     */
     static MoveEngineReq parse(const std::string &s)
     {
         auto j = json::parse(s);
@@ -50,15 +71,13 @@ struct MoveEngineReq
         r.captured_piece = j.value("captured_piece", "");
         r.special_move = j.value("special_move", "");
 
-        // Obs≥uga tablicy dostÍpnych bierek do promocji
+        // Obs≥uga tablicy dostÍpnych figur do promocji
         if (j.contains("available_pieces") && j["available_pieces"].is_array())
         {
             for (const auto &piece : j["available_pieces"])
             {
                 if (piece.is_string())
-                {
                     r.available_pieces.push_back(piece.get<std::string>());
-                }
             }
         }
 
@@ -68,14 +87,22 @@ struct MoveEngineReq
 
 // --- Ø•DANIE LISTY MOØLIWYCH RUCH”W ----------------------------------------
 
-
+/**
+ * @brief Struktura reprezentujπca øπdanie listy moøliwych ruchÛw z danego pola.
+ */
 struct PossibleMovesReq
 {
-    std::string position, fen;
+    std::string position; ///< Pole startowe w notacji algebraicznej (np. "e2").
+    std::string fen;      ///< Aktualny stan gry w formacie FEN.
+
+    /**
+     * @brief Konwertuje obiekt JSON na strukturÍ PossibleMovesReq.
+     *
+     * @param s Ciπg JSON z danymi øπdania.
+     * @return PossibleMovesReq Zdeserializowana struktura øπdania moøliwych ruchÛw.
+     */
     static PossibleMovesReq parse(const std::string &s)
     {
-        // Parser JSON -> PossibleMovesReq
-
         auto j = json::parse(s);
         PossibleMovesReq r;
         r.position = j.at("position");
@@ -86,10 +113,18 @@ struct PossibleMovesReq
 
 // --- ODPOWIEDè: RUCH ODRZUCONY ---------------------------------------------
 
+/**
+ * @brief Tworzy odpowiedü JSON informujπcπ o odrzuceniu ruchu.
+ *
+ * @param from Pole poczπtkowe ruchu.
+ * @param to Pole docelowe ruchu.
+ * @param fen_before FEN pozycji przed wykonaniem ruchu.
+ * @param physical Czy ruch pochodzi≥ z fizycznej planszy.
+ * @param reason PowÛd odrzucenia (np. "Illegal move", "Bad FEN").
+ * @return json Obiekt JSON opisujπcy odrzucony ruch.
+ */
 inline json make_move_rejected(const std::string &from, const std::string &to, const std::string &fen_before, bool physical, const std::string &reason)
 {
-    // Zwraca komunikat o b≥Ídnym lub nielegalnym ruchu
-
     json j;
     j["from"] = from;
     j["to"] = to;
@@ -101,26 +136,57 @@ inline json make_move_rejected(const std::string &from, const std::string &to, c
 
 // --- ODPOWIEDè: MOØLIWE RUCHY (rozszerzona) -------------------------------
 
-inline json make_possible_moves_response_ex(const std::string& position, const std::vector<std::string>& moves,const std::string& fen_used) 
+/**
+ * @brief Tworzy odpowiedü JSON zawierajπcπ listÍ moøliwych ruchÛw dla danego pola.
+ *
+ * @param position Pole startowe w notacji algebraicznej.
+ * @param moves Lista moøliwych pÛl docelowych.
+ * @param fen_used FEN uøyty do generowania listy ruchÛw.
+ * @return json Obiekt JSON z listπ ruchÛw i uøytym FEN-em.
+ */
+inline json make_possible_moves_response_ex(const std::string& position, const std::vector<std::string>& moves, const std::string& fen_used)
 {
-    // Zwraca listÍ moøliwych ruchÛw dla danego pola, wraz z FEN uøytym do analizy
-
     json j;
-    j["position"]=position; 
-    j["moves"]=moves; 
-    j["fen_used"]=fen_used; 
+    j["position"] = position;
+    j["moves"] = moves;
+    j["fen_used"] = fen_used;
     return j;
 }
 
 // --- DODATKOWE RUCHY (np. roszada, bicie w przelocie) ----------------------
 
+/**
+ * @brief Struktura opisujπca dodatkowy ruch (np. ruch wieøy przy roszadzie).
+ */
 struct AdditionalMove
 {
-    std::string from, to, piece;
+    std::string from;  ///< Pole poczπtkowe dodatkowego ruchu.
+    std::string to;    ///< Pole docelowe dodatkowego ruchu.
+    std::string piece; ///< Typ figury wykonujπcej ruch (np. "rook").
 };
 
 // --- ODPOWIEDè: RUCH ZAAKCEPTOWANY -----------------------------------------
 
+/**
+ * @brief Buduje JSON odpowiedzi Ñmove confirmedî po poprawnym wykonaniu ruchu.
+ *
+ * Zawiera zaktualizowany FEN, ewentualne ruchy dodatkowe (np. przy roszadzie),
+ * metadane gry oraz informacje o promocji, szachu i koÒcu partii.
+ *
+ * @param from Pole poczπtkowe ruchu.
+ * @param to Pole docelowe ruchu.
+ * @param fen_after Nowy stan gry w formacie FEN.
+ * @param physical Czy ruch pochodzi≥ z fizycznej planszy.
+ * @param next_player NastÍpny gracz ("white" lub "black").
+ * @param special_move (opcjonalne) Typ specjalnego ruchu (np. "castling_queenside").
+ * @param additional_moves (opcjonalne) Lista dodatkowych ruchÛw (np. ruch wieøy przy roszadzie).
+ * @param promotion_piece (opcjonalne) Figura promocji (np. "queen").
+ * @param notation (opcjonalne) Notacja SAN ruchu.
+ * @param gives_check (opcjonalne) Czy ruch daje szacha.
+ * @param game_status (opcjonalne) Aktualny stan gry ("playing", "checkmate", "draw").
+ * @param winner (opcjonalne) ZwyciÍzca partii ("white" lub "black").
+ * @return json Obiekt JSON reprezentujπcy zaakceptowany ruch.
+ */
 inline json make_move_confirmed(
     const std::string &from, const std::string &to, const std::string &fen_after,
     bool physical, const std::string &next_player,
@@ -132,10 +198,6 @@ inline json make_move_confirmed(
     const std::optional<std::string> &game_status = std::nullopt,
     const std::optional<std::string> &winner = std::nullopt)
 {
-    /**
-     * Buduje JSON odpowiedzi Ñmove confirmedî po poprawnym wykonaniu ruchu.
-     * Zawiera zaktualizowany FEN, ewentualne ruchy dodatkowe oraz metadane gry.
-     */
     json j;
     j["from"] = from;
     j["to"] = to;
@@ -146,13 +208,13 @@ inline json make_move_confirmed(
     if (special_move)
         j["special_move"] = *special_move;
 
-    // Dodatkowe ruchy np. roszada, bicie w przelocie
     if (!additional_moves.empty())
     {
         j["additional_moves"] = json::array();
         for (const auto &am : additional_moves)
             j["additional_moves"].push_back({{"from", am.from}, {"to", am.to}, {"piece", am.piece}});
     }
+
     if (promotion_piece)
         j["promotion_piece"] = *promotion_piece;
     if (notation)

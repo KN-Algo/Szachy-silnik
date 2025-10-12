@@ -1,59 +1,54 @@
-﻿// logging.hpp
+﻿// logging.h
 #pragma once
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include "chess/mqtt/config.h"
 
 /**
  * @file logging.h
  * @brief Prosty system logowania dla silnika szachowego.
  *
- * Umożliwia dynamiczne sterowanie poziomem szczegółowości logów,
- * automatyczne skracanie długich komunikatów (np. dużych payloadów JSON)
- * oraz formatowanie komunikatów w czytelnej formie.
+ * System logowania oparty na wartościach kompilacyjnych zdefiniowanych w `config.h`.
+ * Umożliwia kontrolę poziomu szczegółowości logów i maksymalnej długości podglądu payloadu.
  *
- * ## Zmienne środowiskowe
- * - **LOG_PAYLOAD_PREVIEW** – maksymalna liczba znaków podglądu payloadu (domyślnie 256).
- * - **LOG_LEVEL** – poziom logowania:
+ * ## Konfiguracja
+ * Parametry są zdefiniowane w pliku `config.h`:
+ * - **config::LOG_DEFAULT_LEVEL** – poziom logowania:
  *   - 0 = ERROR
  *   - 1 = WARN
  *   - 2 = INFO
  *   - 3 = DEBUG
+ * - **config::LOG_DEFAULT_PREVIEW_LEN** – maksymalna liczba znaków podglądu payloadu (domyślnie 256)
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Odczyt ustawień środowiskowych
+// Odczyt ustawień z config.h
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * @brief Odczytuje limit długości podglądu payloadu do logów.
+ * @brief Zwraca maksymalną liczbę znaków wyświetlanych w podglądzie payloadu.
  *
- * Wartość jest pobierana z zmiennej środowiskowej `LOG_PAYLOAD_PREVIEW`.
- * Jeśli nie jest ustawiona lub niepoprawna, zwraca wartość domyślną (256).
+ * Wartość definiowana jest w `config::LOG_DEFAULT_PREVIEW_LEN`.
  *
- * @return size_t Maksymalna liczba znaków do podglądu payloadu.
+ * @return size_t Maksymalna liczba znaków podglądu payloadu.
  */
 inline size_t log_preview_limit() {
-    const char* v = std::getenv("LOG_PAYLOAD_PREVIEW");
-    if (!v) return 256;
-    try { return static_cast<size_t>(std::stoul(v)); }
-    catch (...) { return 256; }
+    return config::LOG_DEFAULT_PREVIEW_LEN;
 }
 
 /**
- * @brief Zwraca bieżący poziom logowania ustawiony w środowisku.
+ * @brief Zwraca bieżący poziom logowania.
  *
- * Wartość odczytywana jest ze zmiennej środowiskowej `LOG_LEVEL`.
- * Jeśli zmienna nie jest ustawiona, domyślnie zwraca poziom **INFO (3)**.
+ * Wartość definiowana jest w `config::LOG_DEFAULT_LEVEL` (w pliku `config.h`).
+ * Zmiana tej wartości pozwala kontrolować ilość logowanych informacji
+ * (np. poziom DEBUG w trybie deweloperskim, INFO w produkcji).
  *
  * @return int Poziom logowania (0=ERROR, 1=WARN, 2=INFO, 3=DEBUG).
  */
 inline int log_level() {
-    const char* v = std::getenv("LOG_LEVEL");
-    if (!v) return 3; // INFO
-    try { return std::stoi(v); }
-    catch (...) { return 3; }
+    return config::LOG_DEFAULT_LEVEL;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -18,6 +18,8 @@
 #include "chess/game/GameState.h"
 #include "chess/utils/Notation.h" // coordToAlg / algToCoord
 #include "chess/ai/ChessAI.h"
+#include "chess/mqtt/config.h"
+
 
 #include <thread>
 #include <chrono>
@@ -28,9 +30,6 @@ using json = nlohmann::json;
 using namespace notation;
 using mqttwrap::Client;
 using mqttwrap::MqttConfig;
-
-const int DEFAULT_AI_DEPTH   = 5;     // głębokość przeszukiwania
-const int DEFAULT_AI_TIME_MS = 5000;  // limit czasu w ms
 
 int main()
 {
@@ -43,10 +42,14 @@ int main()
 
     // Konfiguracja MQTT
     MqttConfig cfg;
-    cfg.host = env_or("MQTT_HOST", "localhost");
-    cfg.port = std::stoi(env_or("MQTT_PORT", "1883"));
-    cfg.client_id = env_or("MQTT_CLIENT_ID", "chess-engine");
-    cfg.qos = 1;
+    cfg.host = env_or("MQTT_HOST", config::MQTT_HOST);
+    cfg.port = std::stoi(env_or("MQTT_PORT", std::to_string(config::MQTT_PORT)));
+    cfg.client_id = env_or("MQTT_CLIENT_ID", config::MQTT_CLIENT_ID);
+    cfg.username = env_or("MQTT_USERNAME", config::MQTT_USERNAME);
+    cfg.password = env_or("MQTT_PASSWORD", config::MQTT_PASSWORD);
+    cfg.qos = config::MQTT_QOS;
+    cfg.retain = config::MQTT_RETAIN;
+
 
    
 
@@ -397,10 +400,11 @@ int main()
                 std::string cast = board.castling;          // "KQkq"/"-"
                 std::string ep   = board.enPassant;         // "e3"/"-"
 
-                std::cout << "[AI] Starting search (depth=5, time=5000ms)..." << std::endl;
+                std::cout << "[AI] Starting search (depth=" << config::DEFAULT_AI_DEPTH
+                          << ", time=" << config::DEFAULT_AI_TIME_MS << "ms)..." << std::endl;
                 ChessAI ai;
-                auto res = ai.findBestMove(arr, side, cast, ep, DEFAULT_AI_DEPTH, DEFAULT_AI_TIME_MS);
-
+                auto res = ai.findBestMove(arr, side, cast, ep,
+                                           config::DEFAULT_AI_DEPTH, config::DEFAULT_AI_TIME_MS);
                 std::cout << "[AI] Search completed" << std::endl;
 
                 // brak ruchu?

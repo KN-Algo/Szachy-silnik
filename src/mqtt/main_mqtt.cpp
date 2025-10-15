@@ -632,7 +632,10 @@ int main()
                 } catch (...) {
                     std::cout << "[Engine] Restart with starting position (parse error)" << std::endl;
                     board.startBoard();
+                    
                     // Publikuj potwierdzenie resetu z domyślnym FEN
+                    board.gameStateManager.clearHistory();
+                    
                     const std::string startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
                     client.publish(topics::RESET_CONFIRMED, json{
                         {"type", "reset_confirmed"},

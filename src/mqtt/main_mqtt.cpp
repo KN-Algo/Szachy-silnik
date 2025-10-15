@@ -343,12 +343,31 @@ int main()
 
                     // wszystko, co jest remisem (w tym pat), mapujemy na "draw"
                     case GameState::STALEMATE:
+                        j["game_status"] = "draw";
+                        j["game_ended"] = true;
+                        j["draw_reason"] = "stalemate";  // Dodajemy informację o remisie
+                        LOG_D("[Engine] Game ended in draw due to stalemate.");
+                        break;
+                
                     case GameState::DRAW_50_MOVES:
+                        j["game_status"] = "draw";
+                        j["game_ended"] = true;
+                        j["draw_reason"] = "50-move rule";  // Dodajemy informację o remisie przez 50 ruchów
+                        LOG_D("[Engine] Game ended in draw due to 50-move rule.");
+                        break;
+                
                     case GameState::DRAW_REPETITION:
+                        j["game_status"] = "draw";
+                        j["game_ended"] = true;
+                        j["draw_reason"] = "threefold repetition";  // Dodajemy informację o remisie przez powtórzenie pozycji
+                        LOG_D("[Engine] Game ended in draw due to threefold repetition.");
+                        break;
+                
                     case GameState::DRAW_INSUFFICIENT_MATERIAL:
                         j["game_status"] = "draw";
                         j["game_ended"] = true;
-                        // opcjonalnie: j["draw_reason"] = "stalemate" / "50move" / "threefold" / "insufficient";
+                        j["draw_reason"] = "insufficient material";  // Dodajemy informację o remisie przez brak materiału
+                        LOG_D("[Engine] Game ended in draw due to insufficient material.");
                         break;
 
                     default:

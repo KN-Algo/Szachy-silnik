@@ -105,7 +105,7 @@ int main()
             if (spacePos != std::string::npos) {
                 try {
                     depth = std::stoi(s.substr(spacePos + 1));
-                    timeMs = depth * 2000; // Automatycznie dostosuj czas
+                    //timeMs = depth * 2000; // Automatycznie dostosuj czas
                 } catch (...) {
                     // Jeśli nie udało się sparsować, użyj domyślnych wartości
                 }
@@ -121,6 +121,13 @@ int main()
             std::cout << "Głębokość: " << result.depth << "\n";
             std::cout << "Węzły: " << result.nodesVisited << "\n";
             std::cout << "Czas: " << result.timeSpent.count() << "ms\n";
+            
+            // Sprawdź czy AI znalazło prawidłowy ruch
+            if (result.bestMove.fromRow == 0 && result.bestMove.fromCol == 0 && 
+                result.bestMove.toRow == 0 && result.bestMove.toCol == 0) {
+                std::cout << "BŁĄD: AI nie znalazło żadnego legalnego ruchu!\n";
+                continue;
+            }
             
             // Wykonaj ruch AI
             if (board.isMoveValid(result.bestMove)) {
@@ -141,6 +148,11 @@ int main()
                     std::cout << "Koniec partii.\n";
                     break;
                 }
+            } else {
+                std::cout << "BŁĄD: AI wyprodukował nieprawidłowy ruch!\n";
+                std::cout << "Ruch: (" << result.bestMove.fromRow << "," << result.bestMove.fromCol 
+                         << ") -> (" << result.bestMove.toRow << "," << result.bestMove.toCol << ")\n";
+                std::cout << "Figura: " << result.bestMove.movedPiece << "\n";
             }
             continue;
         }

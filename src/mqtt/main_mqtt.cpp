@@ -612,6 +612,10 @@ int main()
                             client.publish(topics::STATUS_ENGINE, json{{"status","error"},{"message","bad FEN"}});
                             return;
                         }
+
+                        // Resetowanie historii pozycji po restarcie
+                        board.gameStateManager.clearHistory();  // Dodajemy czyszczenie historii powtórzeń
+                        
                         // Publikuj potwierdzenie resetu z FEN
                         client.publish(topics::RESET_CONFIRMED, json{
                             {"type", "reset_confirmed"},
@@ -620,6 +624,10 @@ int main()
                     } else {
                         std::cout << "[Engine] Restarting with starting position" << std::endl;
                         board.startBoard();
+                        
+                        // Resetowanie historii pozycji po restarcie
+                        board.gameStateManager.clearHistory();  // Dodajemy czyszczenie historii powtórzeń
+                        
                         // Publikuj potwierdzenie resetu z domyślnym FEN
                         const std::string startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
                         client.publish(topics::RESET_CONFIRMED, json{

@@ -32,8 +32,8 @@ bool Board::loadFEN(const std::string& fen) {
 
     // pozostałe pola stanu
     activeColor    = (active == "w" ? 'w' : 'b');
-    castling       = (castl == "-" ? "" : castl);
-    enPassant      = (ep == "-" ? "" : ep);
+    castling       = (castl == "-" ? "-" : castl);
+    enPassant      = (ep    == "-" ? "-" : ep);
     halfmoveClock  = half;
     fullmoveNumber = full;
     return true;

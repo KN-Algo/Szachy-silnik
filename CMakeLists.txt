@@ -42,6 +42,7 @@ target_include_directories(chess PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_executable(chess_cli 
         src/mqtt/main_mqtt.cpp
         src/mqtt/mqtt_client.cpp
+	src/mqtt/engine_helpers.cpp
 )
 
 target_include_directories(chess_cli PRIVATE

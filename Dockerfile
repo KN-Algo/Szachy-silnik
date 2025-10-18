@@ -49,7 +49,8 @@ RUN pip3 install --no-cache-dir flask gunicorn paho-mqtt
 # --- Entrypoint orchestruący 3 procesy ---
 # (Ten plik wklejałeś wcześniej; jeśli zmieniałeś nazwę lub ścieżkę — dostosuj)
 COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Konwertuj końcówki linii z Windows (\r\n) na Unix (\n) i ustaw uprawnienia
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # --- Port HTTP dla Flask ---
 EXPOSE 5000
